@@ -6,7 +6,7 @@ const auth = require('../middlewares/auth');
 // POST create a new order (secured)
 router.post('/', auth, async (req, res) => {
   try {
-    // Assuming req.user contains the authenticated user's info
+    // Use authenticated user's ID from req.user
     const user_id = req.user.id;
     const { total, status } = req.body;
 
@@ -26,8 +26,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-
-// GET a single order by ID
+// GET a single order by ID (public)
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -42,35 +41,12 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// POST create a new order
-router.post('/', async (req, res) => {
-  try {
-    const { user_id, total, status } = req.body;
-
-    // Basic validation
-    if (!user_id || !total) {
-      return res.status(400).json({ message: 'User ID and total are required.' });
-    }
-
-    const result = await db.query(
-      'INSERT INTO orders (user_id, total, status) VALUES ($1, $2, $3) RETURNING *',
-      [user_id, total, status || 'pending']
-    );
-
-    res.status(201).json({ message: 'Order created successfully.', order: result.rows[0] });
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ message: 'Server error creating order.' });
-  }
-});
-
-// PUT update an existing order (for example, to change status)
-router.put('/:id', async (req, res) => {
+// PUT update an existing order (secured)
+router.put('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const { total, status } = req.body;
 
-    // Update order; you could expand this as needed
     const result = await db.query(
       'UPDATE orders SET total = $1, status = $2 WHERE id = $3 RETURNING *',
       [total, status, id]
@@ -87,8 +63,8 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE an order
-router.delete('/:id', async (req, res) => {
+// DELETE an order (secured)
+router.delete('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await db.query('DELETE FROM orders WHERE id = $1 RETURNING *', [id]);
