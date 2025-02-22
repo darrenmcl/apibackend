@@ -1,17 +1,31 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const auth = require('../middlewares/auth');
 
-// GET all orders
-router.get('/', async (req, res) => {
+// POST create a new order (secured)
+router.post('/', auth, async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM orders ORDER BY created_at DESC');
-    res.status(200).json(result.rows);
+    // Assuming req.user contains the authenticated user's info
+    const user_id = req.user.id;
+    const { total, status } = req.body;
+
+    if (!total) {
+      return res.status(400).json({ message: 'Total is required.' });
+    }
+
+    const result = await db.query(
+      'INSERT INTO orders (user_id, total, status) VALUES ($1, $2, $3) RETURNING *',
+      [user_id, total, status || 'pending']
+    );
+
+    res.status(201).json({ message: 'Order created successfully.', order: result.rows[0] });
   } catch (error) {
-    console.error('Error fetching orders:', error);
-    res.status(500).json({ message: 'Server error fetching orders.' });
+    console.error('Error creating order:', error);
+    res.status(500).json({ message: 'Server error creating order.' });
   }
 });
+
 
 // GET a single order by ID
 router.get('/:id', async (req, res) => {

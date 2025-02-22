@@ -1,15 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
+const auth = require('../middlewares/auth');
 
 // GET all products
-router.get('/', async (req, res) => {
+
+router.post('/', auth, async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM products ORDER BY created_at DESC');
-    res.status(200).json(result.rows);
+    const { name, description, price } = req.body;
+    if (!name || !price) {
+      return res.status(400).json({ message: 'Name and price are required.' });
+    }
+    const result = await db.query(
+      'INSERT INTO products (name, description, price) VALUES ($1, $2, $3) RETURNING *',
+      [name, description || '', price]
+    );
+    res.status(201).json({ message: 'Product created successfully.', product: result.rows[0] });
   } catch (error) {
-    console.error('Error fetching products:', error);
-    res.status(500).json({ message: 'Server error fetching products.' });
+    console.error('Error creating product:', error);
+    res.status(500).json({ message: 'Server error creating product.' });
   }
 });
 

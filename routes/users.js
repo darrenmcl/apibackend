@@ -63,7 +63,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials.' });
     }
 
-    // Generate a JWT token
+    // Generate a JWT token - payload includes user id and email
     const token = jwt.sign(
       { id: user.id, email: user.email },
       JWT_SECRET,
@@ -76,5 +76,4 @@ router.post('/login', async (req, res) => {
     return res.status(500).json({ message: 'Server error during login.' });
   }
 });
-
 module.exports = router;
