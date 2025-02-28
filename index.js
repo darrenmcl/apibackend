@@ -1,27 +1,23 @@
 const express = require('express');
-const bodyParser = require('body-parser');
-require('dotenv').config();
-
+const cors = require('cors');
 const app = express();
-const port = process.env.PORT || 3012;
 
-// Import routes
+// Allow all origins for testing purposes
+app.use(cors());
+// Explicitly handle preflight OPTIONS requests for all routes
+app.options('*', cors());
+app.use(express.json());
+
+const profileRoutes = require('./routes/profile');
+const postsRoutes = require('./routes/posts');
 const userRoutes = require('./routes/users');
-const productRoutes = require('./routes/products');
-const orderRoutes = require('./routes/orders');
-
-app.use(bodyParser.json());
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'API is running!' });
-});
 
 // Mount routes
+app.use('/profile', profileRoutes);
+app.use('/posts', postsRoutes);
 app.use('/users', userRoutes);
-app.use('/products', productRoutes);
-app.use('/orders', orderRoutes);
 
+const port = process.env.PORT || 3013;
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
