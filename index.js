@@ -14,7 +14,7 @@ app.use(bodyParser.json());
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'API is running!' });
+  res.status(200).json({ status: 'API is running! You may make requests' });
 });
 
 // Mount routes
