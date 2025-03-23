@@ -16,11 +16,13 @@ app.use(morgan('dev')); // Logging
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
+const blogPosts = require('./routes/blogPosts');
 
 // Route mounting
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
+app.use('/posts', blogPosts);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
