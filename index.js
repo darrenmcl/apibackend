@@ -22,7 +22,7 @@ const blogPosts = require('./routes/blogPosts');
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
-app.use('/posts', blogPosts);
+app.use('/blogposts', blogPosts);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
