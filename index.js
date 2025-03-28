@@ -1,6 +1,11 @@
+// /var/projects/backend-api/index.js
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const dotenv = require('dotenv');
+
+// Load environment variables BEFORE creating any services
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3012;
@@ -8,8 +13,21 @@ const PORT = process.env.PORT || 3012;
 // Middleware - IMPORTANT: Order matters!
 app.use(express.json()); // Make sure this comes BEFORE routes
 app.use(express.urlencoded({ extended: true })); // For parsing application/x-www-form-urlencoded
-app.use(cors());
 app.use(morgan('dev')); // Logging
+// const cors = require('cors');
+
+// More detailed CORS configuration
+const corsOptions = {
+  origin: '*', // In production, specify your frontend domain
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+// Update the middleware to use corsOptions
+app.use(cors(corsOptions));
 
 // Import routes
 const userRoutes = require('./routes/users');
@@ -18,8 +36,8 @@ const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
 
-// This should be correct (router is a middleware function)
-app.use('/api/files', fileRoutes);
+// Routes
+app.use('/api/files', fileRoutes); // Now matches /api/files/upload
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
@@ -28,6 +46,15 @@ app.use('/blogposts', blogPosts);
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'API is running! You may make requests' });
+});
+
+// Test route specifically for the file routes
+app.get('/test-file-routes', (req, res) => {
+  res.status(200).json({ 
+    message: 'File routes test endpoint', 
+    fileRoutesLocation: '/api/files/*',
+    uploadEndpoint: '/api/files/upload' 
+  });
 });
 
 // Debug route to check request body parsing
@@ -60,6 +87,7 @@ app.use((req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`File upload endpoint available at: http://localhost:${PORT}/api/files/upload`);
 });
 
 module.exports = app;
