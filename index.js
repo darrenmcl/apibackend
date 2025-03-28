@@ -1,4 +1,3 @@
-// /var/projects/backend-api/index.js
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -17,12 +16,14 @@ const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
+const fileRoutes = require('./routes/files'); // New file routes
 
 // Route mounting
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
+app.use('/files', fileRoutes); // Mount file routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {
