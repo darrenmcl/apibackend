@@ -16,14 +16,14 @@ const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
-const fileRoutes = require('./routes/files'); // New file routes
+const fileRoutes = require('./routes/fileRoutes');
 
-// Route mounting
+// This should be correct (router is a middleware function)
+app.use('/api/files', fileRoutes);
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
-app.use('/files', fileRoutes); // Mount file routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {
