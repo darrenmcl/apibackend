@@ -37,7 +37,7 @@ const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
 
 // Routes
-app.use('/api/files', fileRoutes); // Now matches /api/files/upload
+app.use('/files', fileRoutes); // Now matches /api/files/upload
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
