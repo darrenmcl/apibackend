@@ -1,148 +1,103 @@
 // /var/projects/backend-api/routes/users.js
 const express = require('express');
 const router = express.Router();
-
-// If you're using these libraries, make sure they're installed
-// npm install bcryptjs jsonwebtoken
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const db = require('../config/db'); // Import your DB connection pool
 
-// For testing purposes, let's create a simple in-memory user store
-// In production, you'd use your database here
-const users = [
-  {
-    id: 1,
-    name: 'Test User',
-    email: 'test@example.com',
-    // This is "password123" hashed with bcrypt
-    password: '$2a$10$CwTycUXWue0Thq9StjUM0uQxTmPwVK/1.MN4iLqbcTL4.0s4ECymK' 
-  }
-];
-
-// Helper functions (simple implementation for testing)
+// --- Database Helper Functions ---
 const findUserByEmail = async (email) => {
-  return users.find(user => user.email === email) || null;
+  try {
+    const result = await db.query('SELECT * FROM users WHERE email = $1', [email]);
+    return result.rows[0] || null; // Return user or null if not found
+  } catch (err) {
+    console.error('Error finding user by email:', err);
+    throw err; // Re-throw error to be caught by route handler
+  }
 };
 
-const createUser = async (userData) => {
-  const newUser = {
-    id: users.length + 1,
-    ...userData
-  };
-  users.push(newUser);
-  return newUser;
-};
+// Inside routes/users.js
 
-// Login route with detailed logging
+    const createUser = async (userData) => {
+      const { name, email, password } = userData; // <<< CORRECTED THIS LINE
+      const defaultRole = 'user';
+      try {
+        // The rest of the function uses name, email, password correctly now
+        const result = await db.query(
+          'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role',
+          [name, email, password, defaultRole]
+        );
+        return result.rows[0];
+      } catch (err) {
+        console.error('Error creating user:', err);
+        throw err;
+      }
+    };
+
+// --- REVISED Login Route (using DB helpers) ---
 router.post('/login', async (req, res) => {
   try {
-    console.log('Login attempt with body:', req.body);
-    
-    // Validate input
-    if (!req.body || !req.body.email || !req.body.password) {
-      console.log('Missing required fields in login request');
-      return res.status(400).json({ message: 'Email and password are required' });
-    }
-    
+    // ... (input validation) ...
     const { email, password } = req.body;
-    
-    // Find user by email
-    const user = await findUserByEmail(email);
-    console.log(`User found for email ${email}:`, user ? 'Yes' : 'No');
-    
+    const user = await findUserByEmail(email); // Uses DB
+
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-    
-    // Check password
-    const isMatch = await bcrypt.compare(password, user.password);
-    console.log('Password match:', isMatch);
-    
+
+    const isMatch = await bcrypt.compare(password, user.password); // Compare with DB password hash
+
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
-    
-    // Create JWT token
-    const token = jwt.sign(
-      { userId: user.id },
-      process.env.JWT_SECRET || 'your-default-secret-key',
-      { expiresIn: '1h' }
-    );
-    
-    console.log('Login successful for user:', user.email);
-    
+
+    // Create JWT payload (using user data from DB, including role)
+    const payload = {
+      userId: user.id,
+      email: user.email,
+      role: user.role // Role comes from DB
+    };
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-default-secret-key', { expiresIn: '1h' });
+
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email
-      }
+      user: { id: user.id, name: user.name, email: user.email, role: user.role }
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Server error during login.'});
   }
 });
 
-// Register route with detailed logging
+// --- REVISED Register Route (using DB helpers) ---
 router.post('/register', async (req, res) => {
   try {
-    console.log('Register attempt with body:', req.body);
-    
-    // Validate input
-    if (!req.body || !req.body.name || !req.body.email || !req.body.password) {
-      console.log('Missing required fields in register request');
-      return res.status(400).json({ message: 'Name, email, and password are required' });
-    }
-    
+    // ... (input validation) ...
     const { name, email, password } = req.body;
-    
-    // Check if user already exists
-    const existingUser = await findUserByEmail(email);
-    console.log(`User exists for email ${email}:`, existingUser ? 'Yes' : 'No');
-    
+    const existingUser = await findUserByEmail(email); // Uses DB
+
     if (existingUser) {
       return res.status(400).json({ message: 'User already exists' });
     }
-    
-    // Hash password
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
-    // Create new user
-    const newUser = await createUser({
-      name,
-      email,
-      password: hashedPassword
-    });
-    
-    console.log('New user created:', newUser.email);
-    
-    // Create JWT token
-    const token = jwt.sign(
-      { userId: newUser.id },
-      process.env.JWT_SECRET || 'your-default-secret-key',
-      { expiresIn: '1h' }
-    );
-    
+
+    // Create user in DB (createUser now handles default role)
+    const newUser = await createUser({ name, email, password: hashedPassword }); // Uses DB
+
+    // Create JWT payload for the new user
+    const payload = { userId: newUser.id, email: newUser.email, role: newUser.role };
+    const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-default-secret-key', { expiresIn: '1h' });
+
     res.status(201).json({
       token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email
-      }
+      user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role }
     });
   } catch (error) {
     console.error('Register error:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    res.status(500).json({ message: 'Server error during registration.'});
   }
-});
-
-// Simple route for testing
-router.get('/test', (req, res) => {
-  res.json({ message: 'Users routes working!' });
 });
 
 module.exports = router;
