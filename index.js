@@ -35,6 +35,7 @@ const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
+const stripeRoutes = require('./routes/stripe');
 
 // Routes
 app.use('/files', fileRoutes); // Now matches /api/files/upload
@@ -42,6 +43,7 @@ app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
+app.use('/', stripeRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

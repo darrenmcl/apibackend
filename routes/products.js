@@ -51,21 +51,49 @@ router.post('/', auth, async (req, res) => {
 router.put('/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price } = req.body;
-    const result = await db.query(
-      'UPDATE products SET name = $1, description = $2, price = $3 WHERE id = $4 RETURNING *',
-      [name, description, price, id]
-    );
+    // Destructure 'image' from the request body as well
+    const { name, description, price, image } = req.body; // <--- Add image here
+
+    // --- Basic Validation (Optional but Recommended) ---
+    if (name === undefined || description === undefined || price === undefined) {
+       // Check for undefined specifically if you want to allow empty strings/null for some fields later
+       // If name and price are strictly required non-empty/non-zero:
+       if (!name || !price || price < 0 ) {
+         return res.status(400).json({ message: 'Name and a non-negative Price are required.' });
+       }
+    }
+    // Validate image: Ensure it's a string or explicitly null if sent
+    if (image !== undefined && image !== null && typeof image !== 'string') {
+        return res.status(400).json({ message: 'Invalid image data type. Must be a string or null.' });
+    }
+    // --- End Validation ---
+
+    // Update the SQL query to include the image field
+    const query = `
+      UPDATE products
+      SET name = $1, description = $2, price = $3, image = $4
+      WHERE id = $5
+      RETURNING *`; // RETURNING * gets the whole updated row
+
+    // Add 'image' to the parameters array. Handle null/empty strings.
+    // If image is an empty string from the form, store it as NULL in the DB.
+    const imageValue = (image && image.trim() !== '') ? image.trim() : null;
+
+    const values = [name, description, price, imageValue, id]; // <--- Add imageValue here
+
+    const result = await db.query(query, values);
+
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Product not found.' });
     }
-    res.status(200).json({ message: 'Product updated successfully.', product: result.rows[0] });
+    // Send back the full updated product object
+    res.status(200).json({ message: 'Product updated successfully.', product: result.rows[0] }); // <--- Send updated product
+
   } catch (error) {
     console.error('Error updating product:', error);
     res.status(500).json({ message: 'Server error updating product.' });
   }
 });
-
 // DELETE a product (protected)
 router.delete('/:id', auth, async (req, res) => {
   try {
