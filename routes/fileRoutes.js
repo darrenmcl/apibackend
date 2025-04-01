@@ -1,4 +1,5 @@
 // /var/projects/backend-api/routes/fileRoutes.js
+// --- FINAL CLEANED VERSION ---
 
 // --- Standard Imports ---
 const express = require('express');
@@ -32,142 +33,109 @@ const ASSET_BASE_URL = process.env.ASSET_BASE_URL; // Ensure this is set in your
 
 // --- ROUTES START BELOW ---
 
-// --- *** REVISED POST /upload Route *** ---
+// POST /files/upload (Admin Only)
 router.post('/upload', auth, isAdmin, upload.single('file'), async (req, res) => {
     // upload.single('file') puts the file buffer in req.file
     if (!req.file) {
         return res.status(400).json({ message: 'No file uploaded.' });
     }
-    if (!BUCKET_NAME) {
-         console.error("S3_BUCKET_NAME environment variable not set for upload.");
-         return res.status(500).json({ message: 'Server configuration error: Target bucket not specified.' });
+    // Check essential S3 config variables
+    if (!BUCKET_NAME || !ASSET_BASE_URL) {
+         console.error("S3_BUCKET_NAME or ASSET_BASE_URL environment variable not set.");
+         return res.status(500).json({ message: 'Server configuration error: Storage details missing.' });
     }
 
     try {
-        // Create a unique key (filename) for S3, e.g., using timestamp and original name
+        // Create a unique key (filename) for S3
         const fileExtension = path.extname(req.file.originalname);
         const baseName = path.basename(req.file.originalname, fileExtension);
-        // Sanitize baseName - remove characters not safe for URLs/filenames
-        const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
-        const s3Key = `uploads/<span class="math-inline">\{Date\.now\(\)\}\-</span>{sanitizedBaseName}${fileExtension}`; // Example key structure
+        const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_\-\.]/g, '_'); // Sanitize
+        // Define S3 key structure (e.g., within an 'uploads' prefix)
+        const s3Key = `uploads/${Date.now()}-${sanitizedBaseName}${fileExtension}`;
 
-        console.log(`Attempting to upload to S3: Bucket=<span class="math-inline">\{BUCKET\_NAME\}, Key\=</span>{s3Key}, ContentType=${req.file.mimetype}`);
+        console.log(`Attempting to upload to S3: Bucket=${BUCKET_NAME}, Key=${s3Key}, ContentType=${req.file.mimetype}`);
 
-        // Prepare the command for S3 upload
+        // Prepare the S3 PutObject command
         const command = new PutObjectCommand({
             Bucket: BUCKET_NAME,
-            Key: s3Key,                 // The 'path' and filename in S3
-            Body: req.file.buffer,      // The actual file data from memory storage
-            ContentType: req.file.mimetype, // Set the correct content type
-            // ACL: 'public-read'       // Uncomment if you want files publicly readable via URL (ensure bucket allows this)
+            Key: s3Key,                 // The 'path'/filename in S3
+            Body: req.file.buffer,      // File data from memory storage
+            ContentType: req.file.mimetype, // Set correct MIME type
+            ACL: 'public-read'       // Uncomment ONLY if files need direct public access via S3 URL AND bucket is configured for it
         });
 
         // Send the command to S3
         const s3Response = await s3Client.send(command);
 
-        // Check S3 response (v3 SDK returns $metadata.httpStatusCode)
+        // Check S3 response metadata for success (usually 200 OK)
         if (s3Response.$metadata.httpStatusCode !== 200) {
              console.error("S3 Upload Error Response:", s3Response);
-             throw new Error('Failed to upload file to storage.');
+             throw new Error('Failed to upload file to storage service.');
         }
 
         console.log(`File uploaded successfully to S3. Key: ${s3Key}`);
 
-        // Construct the final public URL
-        const finalUrl = `<span class="math-inline">\{ASSET\_BASE\_URL\}/</span>{s3Key}`; // Use your CDN base URL
+        // Construct the final public URL using your ASSET_BASE_URL (CDN/CNAME)
+        const finalUrl = `${ASSET_BASE_URL}/${s3Key}`; // Use correct template literal
 
-        // Send success response back to frontend
+        // Send success response
         res.status(201).json({
             message: 'File uploaded successfully',
-            filename: req.file.originalname, // Keep original name for reference if needed
-            key: s3Key,                  // The key used in S3
-            url: finalUrl,               // The final accessible URL
+            filename: req.file.originalname, // Original filename for reference
+            key: s3Key,                  // The key/path used in S3
+            url: finalUrl,               // The final accessible URL via CDN/CNAME
             mimetype: req.file.mimetype,
             size: req.file.size
         });
 
     } catch (error) {
         console.error("S3 Upload Error:", error);
-        // Provide a more specific error if possible, otherwise generic
         res.status(500).json({ message: 'Error uploading file to storage.', error: error.message || 'Unknown error' });
     }
 });
-// --- *** END OF REVISED POST /upload *** ---
 
 
-// --- GET /files route (Keep as is from previous fix) ---
-router.get('/', auth, isAdmin, async (req, res) => {
-   // ... your existing S3 listing logic ...
-    if (!BUCKET_NAME) { /* ... */ }
-    try {
-        console.log(`Listing objects in bucket: ${BUCKET_NAME}`);
-        const command = new ListObjectsV2Command({ Bucket: BUCKET_NAME });
-        const s3Response = await s3Client.send(command);
-        console.log(`S3 ListObjectsV2 response received. Found ${s3Response.Contents?.length || 0} items.`);
-        const files = (s3Response.Contents || [])
-            .map(item => { /* ... mapping logic ... */ })
-            .filter(file => file !== null)
-            .sort((a, b) => b.lastModified - a.lastModified);
-        res.status(200).json(files);
-    } catch (error) { /* ... */ }
-});
-
-
-// Optional: Add DELETE route here using DeleteObjectCommand
-
-
-module.exports = router;
-
-// --- *** ADD THIS NEW ROUTE *** ---
-// GET /files - List files (from S3) - Admin Only
-// --- Corrected GET /files Route ---
 // GET /files - List files (from S3) - Admin Only
 router.get('/', auth, isAdmin, async (req, res) => {
-    // Check if bucket name is configured (good practice)
-    if (!BUCKET_NAME) {
-        console.error("S3_BUCKET_NAME environment variable not set.");
-        return res.status(500).json({ message: 'Server configuration error: Bucket not specified.' });
+    // Check essential S3 config variables
+    if (!BUCKET_NAME || !ASSET_BASE_URL) {
+        console.error("S3_BUCKET_NAME or ASSET_BASE_URL environment variable not set.");
+        return res.status(500).json({ message: 'Server configuration error: Storage details missing.' });
     }
 
     try {
         console.log(`Listing objects in bucket: ${BUCKET_NAME}`);
         const command = new ListObjectsV2Command({
             Bucket: BUCKET_NAME,
-            // Prefix: 'uploads/' // Uncomment and set if your files are in a specific S3 'folder'
+            Prefix: 'uploads/' // Optional: Only list files within the 'uploads/' prefix/folder
         });
 
-        // --- *** THIS LINE WAS MISSING/INCORRECT *** ---
-        // Call S3 to list objects and store the result in s3Response
         const s3Response = await s3Client.send(command);
-        // --- *** END OF FIX *** ---
-
-        // Log confirmation after successful call
-        console.log(`S3 ListObjectsV2 response received. Found ${s3Response.Contents?.length || 0} items.`);
+        console.log(`S3 ListObjectsV2 response received. Found ${s3Response.Contents?.length || 0} raw items.`);
 
         // Map over the contents (if any)
         const files = (s3Response.Contents || [])
             .map(item => {
                 const key = item.Key;
-                // Extract filename (part after last '/')
                 const filename = key.substring(key.lastIndexOf('/') + 1);
 
-                // Basic check to filter out S3 pseudo-folders (keys ending in '/')
-                if (!filename && key.endsWith('/')) {
-                    return null; // Skip this item
+                // Filter out directory placeholders returned by ListObjectsV2 if using Prefix
+                if (!filename || key.endsWith('/')) {
+                    return null;
                 }
 
                 return {
                     key: key,
-                    filename: filename || key, // Use key as fallback filename if needed
-                    // Correct URL construction using template literal
-                    url: `${ASSET_BASE_URL}/${key}`,
+                    filename: filename,
+                    url: `${ASSET_BASE_URL}/${key}`, // Use correct template literal
                     size: item.Size,
                     lastModified: item.LastModified
                 };
             })
-            .filter(file => file !== null) // Remove the null entries (skipped folders)
-            .sort((a, b) => b.lastModified - a.lastModified); // Sort by date descending (most recent first)
+            .filter(file => file !== null) // Remove null entries (skipped folders)
+            .sort((a, b) => b.lastModified - a.lastModified); // Sort by date descending
 
+        console.log(`Returning ${files.length} processed file items.`);
         res.status(200).json(files);
 
     } catch (error) {
@@ -175,6 +143,41 @@ router.get('/', auth, isAdmin, async (req, res) => {
         res.status(500).json({ message: 'Error listing files from storage.', error: error.message });
     }
 });
-// --- *** END OF CORRECTED ROUTE *** ---
+
+
+// Optional: DELETE /files/:key - Delete file (from S3) - Admin Only
+// Note: The key needs to be URL encoded/decoded properly if passed in path
+// Using req.params.key might require middleware to decode if key contains slashes
+// Alternatively, pass key in request body or query string for DELETE
+router.delete('/:key(*)', auth, isAdmin, async (req, res) => { // (*) allows slashes in key
+    const fileKey = req.params.key; // Key from URL path (e.g., uploads/timestamp-name.jpg)
+
+    if (!BUCKET_NAME) {
+        console.error("S3_BUCKET_NAME environment variable not set for delete.");
+        return res.status(500).json({ message: 'Server configuration error: Target bucket not specified.' });
+    }
+     if (!fileKey) {
+        return res.status(400).json({ message: 'File key is required for deletion.' });
+    }
+
+    try {
+        console.log(`Attempting to delete from S3: Bucket=${BUCKET_NAME}, Key=${fileKey}`);
+        const command = new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: fileKey,
+        });
+
+        await s3Client.send(command); // Send delete command
+
+        console.log(`File deleted successfully from S3. Key: ${fileKey}`);
+        res.status(200).json({ message: 'File deleted successfully.', key: fileKey }); // Use 200 OK or 204 No Content
+
+    } catch (error) {
+        console.error("S3 Delete Error:", error);
+        // Handle specific errors like NoSuchKey if needed
+        res.status(500).json({ message: 'Error deleting file from storage.', error: error.message || 'Unknown error' });
+    }
+});
+
 
 module.exports = router;

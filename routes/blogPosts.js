@@ -1,35 +1,33 @@
 // /var/projects/backend-api/routes/blogPosts.js
+// --- FINAL VERSION with Corrected Column Names ---
+
 const express = require('express');
 const router = express.Router();
-// Remove local JWT require if not needed elsewhere in this file
-// const jwt = require('jsonwebtoken');
-const pool = require('../db'); // Import the database pool
-const auth = require('../middlewares/auth'); // Use shared auth middleware
-const isAdmin = require('../middlewares/isAdmin'); // Import isAdmin
-
-// --- Remove local authenticateToken function ---
-// const authenticateToken = (req, res, next) => { ... };
+const pool = require('../db'); // Use correct path to your DB pool config
+const auth = require('../middlewares/auth');
+const isAdmin = require('../middlewares/isAdmin');
 
 // --- CRUD Operations ---
 
-// Create a new blog post (Admin Only)
-// Use shared 'auth' and add 'isAdmin'
+// POST / - Create a new blog post (Admin Only)
 router.post('/', auth, isAdmin, async (req, res) => {
   try {
-    if (!req.body || !req.body.title || !req.body.content) {
+    const { title, content, published } = req.body;
+    if (!title || !content) {
       return res.status(400).json({ message: 'Title and content are required' });
     }
+    const authorId = req.user.userId; // Assumes req.user.userId exists from auth middleware
+    if (!authorId) {
+        return res.status(401).json({message: 'User ID not found in token.'});
+    }
 
-    const { title, content, published } = req.body;
-    // Ensure 'userId' from JWT payload matches your auth middleware's setup (req.user.userId or req.user.id)
-    const authorId = req.user.userId; // Or req.user.id
-     if (!authorId) { return res.status(401).json({message: 'User ID not found in token.'});}
-
-
-    const result = await pool.query(
-      'INSERT INTO blog_posts (title, content, author_id, published) VALUES ($1, $2, $3, $4) RETURNING *', // Assuming author column is author_id
-      [title, content, authorId, published || false]
-    );
+    // Use correct column name: authorid
+    const queryText = `
+      INSERT INTO blog_posts (title, content, authorid, published)
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `;
+    const result = await pool.query(queryText, [title, content, authorId, published || false]);
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -38,79 +36,128 @@ router.post('/', auth, isAdmin, async (req, res) => {
   }
 });
 
-// Get all blog posts (public) - OK as is
-router.get('/', async (req, res) => { /* ... */ });
+// GET / - Get all PUBLISHED blog posts (Public)
+router.get('/', async (req, res) => {
+  try {
+    // Use correct column names: published, "createdAt", "updatedAt", authorid
+    const queryText = `
+      SELECT id, title, content, authorid, published, "createdAt", "updatedAt"
+      FROM blog_posts
+      WHERE published = true
+      ORDER BY "createdAt" DESC
+    `;
+    const result = await pool.query(queryText);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error getting blog posts:', error);
+    res.status(500).json({ message: 'Error getting blog posts', error: error.message });
+  }
+});
 
-// Get a single blog post by ID (public) - OK as is
-router.get('/:id', async (req, res) => { /* ... */ });
+// GET /:id - Get a single blog post by ID (Public)
+router.get('/:id', async (req, res) => {
+  try {
+    const postId = parseInt(req.params.id, 10);
+    if (isNaN(postId)) {
+        return res.status(400).json({ message: 'Invalid Post ID format' });
+    }
 
-// Update a blog post (Owner or Admin Only) - REVISED
-// Use shared 'auth', logic check inside
+    // Use correct column names: id, "createdAt", "updatedAt", authorid
+    const queryText = `
+        SELECT id, title, content, authorid, published, "createdAt", "updatedAt"
+        FROM blog_posts
+        WHERE id = $1
+    `;
+    const result = await pool.query(queryText, [postId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Blog post not found' });
+    }
+
+    // Add checks for published status if needed for public access control here
+
+    res.status(200).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error getting blog post:', error);
+    res.status(500).json({ message: 'Error getting blog post', error: error.message });
+  }
+});
+
+// PUT /:id - Update a blog post (Owner or Admin Only)
 router.put('/:id', auth, async (req, res) => {
   try {
     const postId = parseInt(req.params.id, 10);
+     if (isNaN(postId)) return res.status(400).json({ message: 'Invalid Post ID format' });
+
     const { title, content, published } = req.body;
-    const userId = req.user.userId; // Current user's ID
-    const userRole = req.user.role; // Current user's role
+     if (title === undefined || content === undefined || published === undefined) {
+         return res.status(400).json({ message: 'Title, content, and published status are required for update.' });
+     }
+     if (typeof published !== 'boolean') {
+          return res.status(400).json({ message: 'Published must be true or false.' });
+     }
 
-    if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+    if (!userId) return res.status(401).json({message: 'User ID not found in token.'});
 
-
-    // Check if post exists and get authorId
-    const checkResult = await pool.query('SELECT author_id FROM blog_posts WHERE id = $1', [postId]); // Assuming author column is author_id
+    // Use correct column name: authorid
+    const checkResult = await pool.query('SELECT authorid FROM blog_posts WHERE id = $1', [postId]);
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ message: 'Blog post not found' });
     }
 
-    const postAuthorId = checkResult.rows[0].author_id; // Assuming author column is author_id
+    const postAuthorId = checkResult.rows[0].authorid; // Use lowercase from result
 
-    // Allow update IF user is the author OR user is an admin
+    // Check authorization
     if (postAuthorId !== userId && userRole !== 'admin') {
       return res.status(403).json({ message: 'Forbidden: Unauthorized to update this post' });
     }
 
-    // User is authorized, proceed with update
-    const result = await pool.query(
-      'UPDATE blog_posts SET title = $1, content = $2, published = $3, "updatedAt" = NOW() WHERE id = $4 RETURNING *', // Use updatedAt convention
-      [title, content, published, postId]
-    );
+    // Use correct column name: "updatedAt" (quoted for case sensitivity)
+    const updateQueryText = `
+      UPDATE blog_posts
+      SET title = $1, content = $2, published = $3, "updatedAt" = NOW()
+      WHERE id = $4
+      RETURNING *
+    `;
+    const result = await pool.query(updateQueryText, [title, content, published, postId]);
 
-    res.json(result.rows[0]);
+    res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error('Error updating blog post:', error);
     res.status(500).json({ message: 'Error updating blog post', error: error.message });
   }
 });
 
-// Delete a blog post (Owner or Admin Only) - REVISED
-// Use shared 'auth', logic check inside
+// DELETE /:id - Delete a blog post (Owner or Admin Only)
 router.delete('/:id', auth, async (req, res) => {
   try {
     const postId = parseInt(req.params.id, 10);
-     const userId = req.user.userId; // Current user's ID
-    const userRole = req.user.role; // Current user's role
+     if (isNaN(postId)) return res.status(400).json({ message: 'Invalid Post ID format' });
 
-     if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+     if (!userId) return res.status(401).json({message: 'User ID not found in token.'});
 
-
-    // Check if post exists and get authorId
-    const checkResult = await pool.query('SELECT author_id FROM blog_posts WHERE id = $1', [postId]); // Assuming author column is author_id
+    // Use correct column name: authorid
+    const checkResult = await pool.query('SELECT authorid FROM blog_posts WHERE id = $1', [postId]);
 
     if (checkResult.rows.length === 0) {
       return res.status(404).json({ message: 'Blog post not found' });
     }
 
-     const postAuthorId = checkResult.rows[0].author_id; // Assuming author column is author_id
+    const postAuthorId = checkResult.rows[0].authorid;
 
-    // Allow delete IF user is the author OR user is an admin
+    // Check authorization
     if (postAuthorId !== userId && userRole !== 'admin') {
       return res.status(403).json({ message: 'Forbidden: Unauthorized to delete this post' });
     }
 
     // User is authorized, proceed with delete
     await pool.query('DELETE FROM blog_posts WHERE id = $1', [postId]);
-    res.json({ message: 'Blog post deleted' });
+    res.status(200).json({ message: 'Blog post deleted successfully' });
   } catch (error) {
     console.error('Error deleting blog post:', error);
     res.status(500).json({ message: 'Error deleting blog post', error: error.message });
