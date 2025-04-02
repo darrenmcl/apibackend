@@ -169,31 +169,47 @@ console.log(`[POST /api/orders] Inserted into "order" table. New Order ID: ${new
     `; // Removed quantity, adjusted placeholders ($7,$7 -> $6,$6)
 
     // ... inside loop ...
-     console.log(`[POST /api/orders] Inserting line item for Product ID: ${lineItem.productId}`);
-    const lineItemResult = await client.query(lineItemInsertQuery, [
-        newLineItemId,      // $1 id
-        lineItem.productId, // $2 product_id
-        null,               // $3 variant_id (assuming null)
-        lineItem.title,     // $4 title
-        lineItem.thumbnail, // $5 thumbnail
-        lineItem.unitPrice, // $6 unit_price
-        orderCreatedAt      // $7 created_at, $7 updated_at (now becomes $6, $6)
-    ]);
-    const newLineItemId = lineItemResult.rows[0].id; // Get the generated ID
+for (const lineItem of lineItemsData) {
+    console.log('[LOOP START] Processing lineItem:', JSON.stringify(lineItem)); // Log item data
+    const newLineItemId = `li_${uuidv4()}`;
+    console.log('[LOOP] Attempting line_item INSERT...');
+    const lineItemResult = await client.query(lineItemInsertQuery, [ /* ... params ... */ ]);
+    console.log('[LOOP] line_item INSERT done.');
+    // const newLineItemId = lineItemResult.rows[0].id; // Definition moved up
+    const newOrderItemId = `item_${uuidv4()}`;
+    console.log('[LOOP] Attempting order_item INSERT...');
+    await client.query(orderItemInsertQuery, [ /* ... params ... */ ]);
+    console.log('[LOOP] order_item INSERT done.');
+    console.log('[LOOP END] Finished processing lineItem for product ID:', lineItem.productId);
+}
+console.log('Executing lineItemInsertQuery:', lineItemInsertQuery);
+console.log('With params:', [newLineItemId, lineItem.productId, null, lineItem.title, lineItem.thumbnail, lineItem.unitPrice, orderCreatedAt]);
+const lineItemResult = await client.query(lineItemInsertQuery, [ /* params */ ]);
+    //const newLineItemId = lineItemResult.rows[0].id; // Get the generated ID
      // --- END CORRECTED ---
 
-    // --- Insert into order_item (This part correctly includes quantity) ---
-    const orderItemInsertQuery = `... VALUES ($1, $2, $3, $4, $5, $6, $6) ...`;
+// --- CORRECTED order_item insert ---
+    // *** VERIFY order_item column names (id, order_id, item_id, quantity, generation_status, report_s3_key, created_at, updated_at) ***
+    const orderItemInsertQuery = `
+        INSERT INTO order_item (id, order_id, item_id, quantity, generation_status, report_s3_key, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+    `; // Expects 7 unique parameters ($7 used twice)
+
+    const newOrderItemId = `item_${uuidv4()}`; // Define ID here
+    console.log(`[POST /api/orders] Inserting order item for Line Item ID: ${newLineItemId}`);
+
+    // Ensure parameters match the query columns correctly
     await client.query(orderItemInsertQuery, [
-        `item_${uuidv4()}`, // Generate new order_item ID
-        newOrderId,
-        newLineItemId,      // Link to the order_line_item we just created
-        lineItem.quantity,  // <<< CORRECTLY includes quantity here
-        'pending',          // generation_status
-        null,               // report_s3_key
-        orderCreatedAt      // created_at, updated_at
+        newOrderItemId,     // $1: id
+        newOrderId,         // $2: order_id
+        newLineItemId,      // $3: item_id (links to order_line_item)
+        lineItem.quantity,  // $4: quantity
+        'pending',          // $5: generation_status
+        null,               // $6: report_s3_key
+        orderCreatedAt      // $7: created_at AND updated_at
     ]);
-    // --- End insert into order_item ---
+    console.log(`[POST /api/orders] order_item INSERT seems ok for item ${newOrderItemId}`); // Add log
+    // --- END CORRECTED ---
         console.log(`[POST /api/orders] Inserted ${lineItemsData.length} line items and order items.`);
 
         await client.query('COMMIT');
