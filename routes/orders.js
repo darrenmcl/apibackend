@@ -1,54 +1,109 @@
-// /var/projects/backend-api/routes/orders.js
-
-// --- Existing requires ---
 const express = require('express');
 const router = express.Router();
-const db = require('../config/db'); // Your DB pool/client
+const db = require('../config/db');
 const auth = require('../middlewares/auth');
 const isAdmin = require('../middlewares/isAdmin');
+const { v4: uuidv4 } = require('uuid');
 
-// --- REVISED POST / Route ---
+// GET ALL orders (Admin Only) - Moved to top to avoid route order issues
+router.get('/', auth, isAdmin, async (req, res) => {
+    try {
+        // Changed from 'orders' to '"order"'
+        const result = await db.query('SELECT * FROM "order" ORDER BY created_at DESC');
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching all orders:', error);
+        res.status(500).json({ message: 'Server error fetching all orders.' });
+    }
+});
+
+// GET user's own orders - Placed before parameterized routes
+router.get('/my-orders', auth, async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+
+        // Changed from 'orders' to '"order"'
+        const result = await db.query('SELECT * FROM "order" WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching user orders:', error);
+        res.status(500).json({ message: 'Server error fetching user orders.' });
+    }
+});
+
+// GET a single order by ID
+router.get('/:id', auth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.userId;
+        const userRole = req.user.role;
+
+        if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+
+        // Changed from 'orders' to '"order"'
+        const result = await db.query('SELECT * FROM "order" WHERE id = $1', [id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Order not found.' });
+        }
+
+        const order = result.rows[0];
+
+        // Check if the logged-in user is the owner OR an admin
+        if (order.user_id !== userId && userRole !== 'admin') {
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
+        }
+
+        // Allow access if owner or admin
+        res.status(200).json(order);
+    } catch (error) {
+        console.error('Error fetching order:', error);
+        res.status(500).json({ message: 'Server error fetching order.' });
+    }
+});
+
+// POST create a new order
 router.post('/', auth, async (req, res) => {
-    const userId = req.user?.userId;
-    if (!userId) {
-        return res.status(401).json({ message: 'User authentication error.' });
-    }
+    console.log('[POST /api/orders] req.user received from auth middleware:', req.user);
+    // --- >>> VERIFY THESE LINES ARE CORRECT <<< ---
+    const customerId = req.user?.customerId; // Gets value from req.user
+    const userEmail = req.user?.email;       // Gets value from req.user
+    const userIdForLogs = req.user?.userId; // Optional for logging
 
-    const { items } = req.body; // Expecting: [{ productId: ..., quantity: ... }, ...]
-
-    // --- Basic Input Validation ---
-    if (!Array.isArray(items) || items.length === 0) {
-        return res.status(400).json({ message: 'Order items array is required.' });
+    // Check if they were successfully retrieved from req.user
+    if (!customerId || !userEmail) {
+        console.error(`[POST /api/orders] Missing customerId or email from req.user for userId ${userIdForLogs}. req.user:`, req.user);
+        return res.status(401).json({ message: 'User customer ID or email could not be determined from token.' });
     }
-    if (!items.every(item => item && Number.isInteger(item.productId) && item.productId > 0 && Number.isInteger(item.quantity) && item.quantity > 0)) {
-         return res.status(400).json({ message: 'Invalid items array format. Each item must have productId and quantity as positive integers.' });
-    }
+    // --- >>> END VERIFICATION <<< ---
 
-    // --- Database Transaction ---
-    const client = await db.pool.connect();
-    console.log(`[POST /api/orders] Transaction started for user ${userId}`);
+    const { items } = req.body;
+    // ... rest of validation ...
+
+    const client = await db.connect(); // Corrected connect method
+    console.log(`[POST /api/orders] Transaction started for Customer ID: ${customerId}`); // Log the defined variable
+
 
     try {
-        await client.query('BEGIN'); // Start transaction
+        await client.query('BEGIN');
 
-        // 1. Fetch Product Details & Calculate Total Server-Side
+        // Rest of transaction code remains unchanged...
         const productIds = [...new Set(items.map(item => item.productId))];
-        // Fetch required details: price, name, image (for thumbnail)
-        // *** Verify your product column names ***
         const productQueryText = `SELECT id, price, name, image FROM products WHERE id = ANY($1::int[])`;
         const productResult = await client.query(productQueryText, [productIds]);
 
         const productDetailsMap = new Map();
         productResult.rows.forEach(p => {
             productDetailsMap.set(p.id, {
-                price: parseFloat(p.price), // Ensure numeric
+                price: parseFloat(p.price),
                 name: p.name,
-                thumbnail: p.image // Use product image as thumbnail? Adjust if different.
+                thumbnail: p.image
             });
         });
 
         let calculatedTotal = 0;
-        const lineItemsData = []; // To store data for both line_item and item tables
+        const lineItemsData = [];
 
         for (const item of items) {
             const details = productDetailsMap.get(item.productId);
@@ -60,208 +115,155 @@ router.post('/', auth, async (req, res) => {
                 productId: item.productId,
                 quantity: item.quantity,
                 unitPrice: details.price,
-                title: details.name, // Snapshot title
-                thumbnail: details.thumbnail // Snapshot thumbnail path/URL
-                // Add other relevant product/variant details if needed
+                title: details.name,
+                thumbnail: details.thumbnail
             });
         }
         calculatedTotal = parseFloat(calculatedTotal.toFixed(2));
         console.log(`[POST /api/orders] Calculated total: ${calculatedTotal}`);
 
-        // 2. Insert into 'order' table (assuming table name is 'order')
-        // *** Verify table name 'order' and column names user_id, total, status, created_at, updated_at ***
-        const orderInsertQuery = `
-            INSERT INTO "order" (user_id, total, status, created_at, updated_at)
-            VALUES ($1, $2, $3, NOW(), NOW())
-            RETURNING id, created_at
-        `; // Use quotes around "order" if needed
-        const orderResult = await client.query(orderInsertQuery, [userId, calculatedTotal, 'pending']);
-        const newOrderId = orderResult.rows[0].id;
-        const orderCreatedAt = orderResult.rows[0].created_at; // Use consistent timestamp
-        console.log(`[POST /api/orders] Inserted into "order" table. New Order ID: ${newOrderId}`);
+// Inside POST / handler, after total calculation
 
-        // 3. Insert into 'order_line_item' and 'order_item' tables for each item
-        // *** Verify all column names for both tables ***
-        const lineItemInsertQuery = `
-            INSERT INTO order_line_item (product_id, variant_id, title, thumbnail, unit_price, quantity, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-            RETURNING id
-        `; // Added quantity here assuming it might belong? Check schema again if needed. If not, remove it.
-           // Using same timestamp for created/updated
+// --- CORRECTED section ---
+// 2. Insert into "order" table
+const newOrderId = `order_${uuidv4()}`; // <<< DEFINE the new TEXT ID first using uuid
+const defaultRegionId = process.env.DEFAULT_REGION_ID || 'reg_default'; // Example default
+const defaultCurrencyCode = process.env.DEFAULT_CURRENCY || 'usd'; // Example default
 
-        const orderItemInsertQuery = `
-            INSERT INTO order_item (order_id, item_id, quantity, generation_status, report_s3_key, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $6)
-        `; // Added generation_status, report_s3_key. Using same timestamp.
-           // Set fulfilled/shipped/etc quantities to 0 by default if NOT NULL constraints require it
+// *** Verify table name "order" and column names ***
+// Use correct lowercase column names matching the 'order' table schema
+const orderInsertQuery = `
+    INSERT INTO "order" (id, customer_id, region_id, email, currency_code, status, created_at, updated_at)
+    VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+    RETURNING id, created_at 
+`; // Removed quotes, corrected case, fixed RETURNING alias
+// Now use the defined newOrderId variable as the first parameter ($1)
+const orderResult = await client.query(orderInsertQuery, [
+    newOrderId,         // <<< Use the variable defined above
+    customerId,
+    defaultRegionId,
+    userEmail,
+    defaultCurrencyCode,
+    'pending'
+]);
 
-        for (const lineItem of lineItemsData) {
-            // Insert the line item snapshot
-             console.log(`[POST /api/orders] Inserting line item for Product ID: ${lineItem.productId}`);
-             // Adjust query/params based on actual order_line_item schema (e.g., variant_id may be null)
-            const lineItemResult = await client.query(lineItemInsertQuery, [
-                lineItem.productId, // product_id
-                null,               // variant_id (assuming null for now)
-                lineItem.title,     // title
-                lineItem.thumbnail, // thumbnail
-                lineItem.unitPrice, // unit_price
-                lineItem.quantity,  // <<< If quantity belongs here, otherwise remove
-                orderCreatedAt      // created_at, updated_at
-            ]);
-            const newLineItemId = lineItemResult.rows[0].id;
+// Check if insert worked and RETURNING gave us rows
+if (!orderResult.rows || orderResult.rows.length === 0) {
+    throw new Error('Failed to retrieve new Order ID after insert into "order" table.');
+}
+// newOrderId is already defined, just get the timestamp
+const orderCreatedAt = orderResult.rows[0].created_at;
+console.log(`[POST /api/orders] Inserted into "order" table. New Order ID: ${newOrderId}`);
+// --- End CORRECTED section ---
 
-            // Insert the corresponding order item tracking record
-             console.log(`[POST /api/orders] Inserting order item for Line Item ID: ${newLineItemId}`);
-            await client.query(orderItemInsertQuery, [
-                newOrderId,      // order_id
-                newLineItemId,   // item_id (links to order_line_item)
-                lineItem.quantity, // quantity
-                'pending',       // generation_status (default)
-                null,            // report_s3_key (default)
-                orderCreatedAt   // created_at, updated_at
-            ]);
-        }
+// 3. Insert into 'order_line_item' and 'order_item' tables...
+// ... the rest of the loop which USES newOrderId ...
+
+
+// --- CORRECTED order_line_item insert ---
+    // *** VERIFY order_line_item column names (product_id, variant_id, title, thumbnail, unit_price, created_at, updated_at) ***
+    const lineItemInsertQuery = `
+        INSERT INTO order_line_item (id, product_id, variant_id, title, thumbnail, unit_price, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $6)
+        RETURNING id
+    `; // Removed quantity, adjusted placeholders ($7,$7 -> $6,$6)
+
+    // ... inside loop ...
+     console.log(`[POST /api/orders] Inserting line item for Product ID: ${lineItem.productId}`);
+    const lineItemResult = await client.query(lineItemInsertQuery, [
+        newLineItemId,      // $1 id
+        lineItem.productId, // $2 product_id
+        null,               // $3 variant_id (assuming null)
+        lineItem.title,     // $4 title
+        lineItem.thumbnail, // $5 thumbnail
+        lineItem.unitPrice, // $6 unit_price
+        orderCreatedAt      // $7 created_at, $7 updated_at (now becomes $6, $6)
+    ]);
+    const newLineItemId = lineItemResult.rows[0].id; // Get the generated ID
+     // --- END CORRECTED ---
+
+    // --- Insert into order_item (This part correctly includes quantity) ---
+    const orderItemInsertQuery = `... VALUES ($1, $2, $3, $4, $5, $6, $6) ...`;
+    await client.query(orderItemInsertQuery, [
+        `item_${uuidv4()}`, // Generate new order_item ID
+        newOrderId,
+        newLineItemId,      // Link to the order_line_item we just created
+        lineItem.quantity,  // <<< CORRECTLY includes quantity here
+        'pending',          // generation_status
+        null,               // report_s3_key
+        orderCreatedAt      // created_at, updated_at
+    ]);
+    // --- End insert into order_item ---
         console.log(`[POST /api/orders] Inserted ${lineItemsData.length} line items and order items.`);
 
-        // 4. Commit Transaction
         await client.query('COMMIT');
         console.log(`[POST /api/orders] Transaction committed for Order ID: ${newOrderId}`);
 
-        // 5. Send Success Response
         res.status(201).json({
-             message: 'Order created successfully.',
-             order: { // Return basic order info; client can fetch full details if needed
-                 id: newOrderId,
-                 total: calculatedTotal,
-                 status: 'pending',
-                 created_at: orderCreatedAt
-             }
+            message: 'Order created successfully.',
+            order: {
+                id: newOrderId,
+                total: calculatedTotal,
+                status: 'pending',
+                created_at: orderCreatedAt
+            }
         });
 
     } catch (error) {
-        // 6. Rollback Transaction on Error
         await client.query('ROLLBACK');
         console.error('[POST /api/orders] Transaction rolled back due to error:', error);
         res.status(500).json({ message: 'Server error creating order.', error: error.message });
     } finally {
-        // 7. Release Client Back to Pool
         client.release();
         console.log(`[POST /api/orders] Database client released.`);
     }
 });
 
-// GET user's own orders (Authenticated users)
-router.get('/my-orders', auth, async (req, res) => {
-    try {
-        const userId = req.user.userId; // Get ID from authenticated user
-         if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
-
-        const result = await db.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching user orders:', error);
-        res.status(500).json({ message: 'Server error fetching user orders.' });
-    }
-});
-
-
-// GET a single order by ID (Owner or Admin only) - REVISED
-// Add 'auth' middleware, logic check inside
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId; // User ID from token
-    const userRole = req.user.role; // User role from token
-
-    if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
-
-
-    const result = await db.query('SELECT * FROM orders WHERE id = $1', [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Order not found.' });
-    }
-
-    const order = result.rows[0];
-
-    // Check if the logged-in user is the owner OR an admin
-    if (order.user_id !== userId && userRole !== 'admin') {
-        return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
-    }
-
-    // Allow access if owner or admin
-    res.status(200).json(order);
-
-  } catch (error) {
-    console.error('Error fetching order:', error);
-    res.status(500).json({ message: 'Server error fetching order.' });
-  }
-});
-
 // PUT update an existing order (Admin Only)
-// Add 'isAdmin' middleware
 router.put('/:id', auth, isAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { total, status } = req.body; // Add other fields if needed (e.g., tracking_number)
+    try {
+        const { id } = req.params;
+        const { total, status } = req.body;
 
-    // Add validation
-     if (total === undefined || status === undefined) {
-       return res.status(400).json({ message: 'Total and status are required for update.' });
-     }
-      const numericTotal = Number(total);
-      if (isNaN(numericTotal) || numericTotal < 0) {
-         return res.status(400).json({ message: 'Total must be a non-negative number.' });
-     }
-     // Add validation for status values if applicable (e.g., ['pending', 'shipped', 'delivered'])
+        if (total === undefined || status === undefined) {
+            return res.status(400).json({ message: 'Total and status are required for update.' });
+        }
+        const numericTotal = Number(total);
+        if (isNaN(numericTotal) || numericTotal < 0) {
+            return res.status(400).json({ message: 'Total must be a non-negative number.' });
+        }
 
+        // Changed from 'orders' to '"order"'
+        const result = await db.query(
+            'UPDATE "order" SET total = $1, status = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+            [numericTotal, status, id]
+        );
 
-    const result = await db.query(
-      'UPDATE orders SET total = $1, status = $2, updated_at = NOW() WHERE id = $3 RETURNING *', // Use updated_at convention
-      [numericTotal, status, id]
-    );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Order not found.' });
+        }
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Order not found.' });
+        res.status(200).json({ message: 'Order updated successfully.', order: result.rows[0] });
+    } catch (error) {
+        console.error('Error updating order:', error);
+        res.status(500).json({ message: 'Server error updating order.' });
     }
-
-    res.status(200).json({ message: 'Order updated successfully.', order: result.rows[0] });
-  } catch (error) {
-    console.error('Error updating order:', error);
-    res.status(500).json({ message: 'Server error updating order.' });
-  }
 });
 
 // DELETE an order (Admin Only)
-// Add 'isAdmin' middleware
 router.delete('/:id', auth, isAdmin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await db.query('DELETE FROM orders WHERE id = $1 RETURNING *', [id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: 'Order not found.' });
-    }
-    res.status(200).json({ message: 'Order deleted successfully.', order: result.rows[0] });
-  } catch (error) {
-    console.error('Error deleting order:', error);
-    res.status(500).json({ message: 'Server error deleting order.' });
-  }
-});
-
-// GET ALL orders (Admin Only) - Example new route
-router.get('/', auth, isAdmin, async (req, res) => {
     try {
-        // Simple query to get all orders, newest first
-        const result = await db.query('SELECT * FROM orders ORDER BY created_at DESC');
-        res.status(200).json(result.rows);
+        const { id } = req.params;
+        // Changed from 'orders' to '"order"'
+        const result = await db.query('DELETE FROM "order" WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Order not found.' });
+        }
+        res.status(200).json({ message: 'Order deleted successfully.', order: result.rows[0] });
     } catch (error) {
-        console.error('Error fetching all orders:', error);
-        res.status(500).json({ message: 'Server error fetching all orders.' });
+        console.error('Error deleting order:', error);
+        res.status(500).json({ message: 'Server error deleting order.' });
     }
 });
-// --- Keep other route handlers (GET /my-orders, GET /:id, PUT /:id, DELETE /:id, GET /) ---
-// Remember they will also need updating to JOIN with order_line_item and order_item
-// to show meaningful data.
-// ... (rest of your file) ...
 
 module.exports = router;

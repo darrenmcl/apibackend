@@ -3,7 +3,7 @@
 
 const express = require('express');
 const router = express.Router();
-const pool = require('../db'); // Use correct path to your DB pool config
+const pool = require('../config/db'); // Use correct path to your DB pool config
 const auth = require('../middlewares/auth');
 const isAdmin = require('../middlewares/isAdmin');
 

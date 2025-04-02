@@ -18,10 +18,10 @@ app.use(morgan('dev')); // Logging
 
 // More detailed CORS configuration
 const corsOptions = {
-  origin: '*', // In production, specify your frontend domain
+  origin: 'https://storefront.performancecorporate.com', // Specify frontend origin
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
+  credentials: true, // Allow cookies/auth headers if needed across origins (though proxy helps)
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
