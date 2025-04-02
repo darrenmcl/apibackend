@@ -6,6 +6,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db'); // Import your DB connection pool
+const { v4: uuidv4 } = require('uuid');
 
 // /var/projects/backend-api/routes/users.js
 
@@ -104,43 +105,125 @@ router.post('/login', async (req, res) => {
 }); // --- End Login Route ---
 
 
-// --- Register Route (Needs Modification Too!) ---
 router.post('/register', async (req, res) => {
-  // --- IMPORTANT ---
-  // This handler ALSO needs to be updated to interact with the 'customer' table.
-  // It should check if a customer exists with the email.
-  // - If exists & has_account=true -> Error "Account already registered"
-  // - If exists & has_account=false -> Create user, UPDATE customer SET has_account=true
-  // - If not exists -> Create user AND Create customer (with has_account=true)
-  // This requires careful handling, possibly within a transaction.
-  // We can revise this AFTER confirming login works.
-  // --- Keep existing register logic FOR NOW, knowing it's incomplete ---
-  try {
+    console.log('[Register] Attempt with body:', req.body);
     const { name, email, password } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ message: 'Name, email, and password are required' });
-    if (password.length < 6) return res.status(400).json({ message: 'Password must be at least 6 characters long'});
 
-    // IMPORTANT: This only checks 'users' table currently
-    const existingUser = await findUserByEmail(email);
-    if (existingUser) return res.status(400).json({ message: 'User already exists with this email' });
+    // --- Input Validation ---
+    if (!name || !email || !password) {
+        return res.status(400).json({ message: 'Name, email, and password are required' });
+    }
+    if (password.length < 6) {
+         return res.status(400).json({ message: 'Password must be at least 6 characters long'});
+    }
+    // Add email format validation if desired
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // --- Use Transaction ---
+    const client = await db.connect(); // Get client from pool
+    console.log('[Register] Transaction started for email:', email);
 
-    // IMPORTANT: This currently only creates in 'users' table (if using DB)
-    // Needs modification to also handle 'customer' table creation/update
-    const newUser = await createUser({ name, email, password: hashedPassword });
+    try {
+        await client.query('BEGIN');
 
-    // Create JWT - needs customerId similar to login (requires fetching/creating customer first)
-    // For now, sign with what we have, but ORDER CREATION WILL FAIL until register is fixed too
-     const payload = { userId: newUser.id, email: newUser.email, role: newUser.role }; // Missing customerId
-     const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-default-secret-key', { expiresIn: '1h' });
+        // 1. Check existing User AND Customer
+        // Check users table
+        const existingUserResult = await client.query('SELECT id FROM users WHERE email = $1', [email]);
+        if (existingUserResult.rows.length > 0) {
+            console.log('[Register] User already exists in users table.');
+            await client.query('ROLLBACK'); // Abort transaction
+            client.release();
+            return res.status(400).json({ message: 'Account with this email already registered.' });
+        }
 
-     res.status(201).json({ token, user: { id: newUser.id, name: newUser.name, email: newUser.email, role: newUser.role }}); // Missing customerId
+        // Check customer table (case-insensitive email check might be better depending on DB setup)
+        // *** Verify 'customer' table column names: email, has_account, id ***
+        const existingCustomerResult = await client.query('SELECT id, has_account FROM customer WHERE email = $1', [email]);
+        const existingCustomer = existingCustomerResult.rows[0];
 
-  } catch (error) { /* ... */ }
-});
+        let customerId;
+        let isNewCustomer = false;
 
+        if (existingCustomer) {
+            // Customer exists, check if they already have a linked account
+            if (existingCustomer.has_account) {
+                console.log('[Register] Customer exists and already has account.');
+                await client.query('ROLLBACK');
+                client.release();
+                return res.status(400).json({ message: 'Account with this email already registered.' });
+            } else {
+                // Customer exists but doesn't have a linked user account yet. Update it.
+                console.log('[Register] Customer exists, updating has_account to true.');
+                customerId = existingCustomer.id; // Use existing customer ID
+                await client.query('UPDATE customer SET has_account = true, updated_at = NOW() WHERE id = $1', [customerId]);
+            }
+        } else {
+            // Customer does not exist, create a new one
+            console.log('[Register] Customer does not exist, creating new customer.');
+            isNewCustomer = true;
+            customerId = `cus_${uuidv4()}`; // Generate new customer TEXT ID
+            const nameParts = name.split(' ');
+            const firstName = nameParts[0] || '';
+            const lastName = nameParts.slice(1).join(' ') || '';
+            // *** Verify 'customer' table column names ***
+            await client.query(
+                'INSERT INTO customer (id, email, first_name, last_name, has_account, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())',
+                [customerId, email, firstName, lastName, true] // Set has_account to true
+            );
+            console.log('[Register] New customer created with ID:', customerId);
+        }
+
+        // 2. Create User record (now that customer exists/is handled)
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+        // *** Verify 'users' table column names: name, email, password, role ***
+        const userInsertQuery = `INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, email, role, name`;
+        const newUserResult = await client.query(userInsertQuery, [name, email, hashedPassword, 'user']);
+        const newUser = newUserResult.rows[0];
+        console.log('[Register] New user created in users table:', newUser);
+
+
+        // 3. Link User and Customer IF NEEDED (e.g., if customer table has user_id FK)
+        // If your 'customer' table has a 'user_id' column to link back:
+        // await client.query('UPDATE customer SET user_id = $1 WHERE id = $2', [newUser.id, customerId]);
+        // console.log('[Register] Linked customer to user.');
+
+
+        // 4. Create JWT Payload (now includes customerId)
+        const payload = {
+            userId: newUser.id,
+            customerId: customerId,
+            email: newUser.email,
+            role: newUser.role,
+            name: newUser.name // Include name if needed
+        };
+        const token = jwt.sign(payload, process.env.JWT_SECRET || 'your-default-secret-key', { expiresIn: '1h' });
+
+
+        // 5. Commit Transaction
+        await client.query('COMMIT');
+        console.log('[Register] Transaction committed for:', email);
+
+        // 6. Send Success Response
+        res.status(201).json({
+            token,
+            user: { // Send back useful user info
+                id: newUser.id,
+                customerId: customerId,
+                name: newUser.name,
+                email: newUser.email,
+                role: newUser.role
+            }
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK'); // Rollback on any error
+        console.error('[Register] Transaction rolled back due to error:', error);
+        res.status(500).json({ message: 'Server error during registration.', error: error.message });
+    } finally {
+        client.release(); // Release client in all cases
+         console.log('[Register] Database client released for:', email);
+    }
+}); // --- End Register Route ---
 
 // --- Keep module.exports ---
 module.exports = router;

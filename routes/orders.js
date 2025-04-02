@@ -5,10 +5,9 @@ const auth = require('../middlewares/auth');
 const isAdmin = require('../middlewares/isAdmin');
 const { v4: uuidv4 } = require('uuid');
 
-// GET ALL orders (Admin Only) - Moved to top to avoid route order issues
+// GET ALL orders (Admin Only)
 router.get('/', auth, isAdmin, async (req, res) => {
     try {
-        // Changed from 'orders' to '"order"'
         const result = await db.query('SELECT * FROM "order" ORDER BY created_at DESC');
         res.status(200).json(result.rows);
     } catch (error) {
@@ -17,13 +16,14 @@ router.get('/', auth, isAdmin, async (req, res) => {
     }
 });
 
-// GET user's own orders - Placed before parameterized routes
+// GET user's own orders
 router.get('/my-orders', auth, async (req, res) => {
     try {
         const userId = req.user.userId;
-        if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+        if (!userId) { 
+            return res.status(401).json({message: 'User ID not found in token.'});
+        }
 
-        // Changed from 'orders' to '"order"'
         const result = await db.query('SELECT * FROM "order" WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
         res.status(200).json(result.rows);
     } catch (error) {
@@ -39,9 +39,10 @@ router.get('/:id', auth, async (req, res) => {
         const userId = req.user.userId;
         const userRole = req.user.role;
 
-        if (!userId) { return res.status(401).json({message: 'User ID not found in token.'});}
+        if (!userId) { 
+            return res.status(401).json({message: 'User ID not found in token.'});
+        }
 
-        // Changed from 'orders' to '"order"'
         const result = await db.query('SELECT * FROM "order" WHERE id = $1', [id]);
 
         if (result.rows.length === 0) {
@@ -55,7 +56,6 @@ router.get('/:id', auth, async (req, res) => {
             return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
         }
 
-        // Allow access if owner or admin
         res.status(200).json(order);
     } catch (error) {
         console.error('Error fetching order:', error);
@@ -66,29 +66,34 @@ router.get('/:id', auth, async (req, res) => {
 // POST create a new order
 router.post('/', auth, async (req, res) => {
     console.log('[POST /api/orders] req.user received from auth middleware:', req.user);
-    // --- >>> VERIFY THESE LINES ARE CORRECT <<< ---
-    const customerId = req.user?.customerId; // Gets value from req.user
-    const userEmail = req.user?.email;       // Gets value from req.user
-    const userIdForLogs = req.user?.userId; // Optional for logging
+    
+    const customerId = req.user?.customerId;
+    const userEmail = req.user?.email;
+    const userIdForLogs = req.user?.userId;
 
-    // Check if they were successfully retrieved from req.user
     if (!customerId || !userEmail) {
         console.error(`[POST /api/orders] Missing customerId or email from req.user for userId ${userIdForLogs}. req.user:`, req.user);
         return res.status(401).json({ message: 'User customer ID or email could not be determined from token.' });
     }
-    // --- >>> END VERIFICATION <<< ---
 
     const { items } = req.body;
-    // ... rest of validation ...
+    
+    // Basic validation
+    if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: 'Order items array is required.' });
+    }
+    if (!items.every(item => item && Number.isInteger(item.productId) && item.productId > 0 && 
+                          Number.isInteger(item.quantity) && item.quantity > 0)) {
+        return res.status(400).json({ message: 'Invalid items array format. Each item must have productId and quantity as positive integers.' });
+    }
 
-    const client = await db.connect(); // Corrected connect method
-    console.log(`[POST /api/orders] Transaction started for Customer ID: ${customerId}`); // Log the defined variable
-
+    const client = await db.connect();
+    console.log(`[POST /api/orders] Transaction started for Customer ID: ${customerId}`);
 
     try {
         await client.query('BEGIN');
 
-        // Rest of transaction code remains unchanged...
+        // Fetch products
         const productIds = [...new Set(items.map(item => item.productId))];
         const productQueryText = `SELECT id, price, name, image FROM products WHERE id = ANY($1::int[])`;
         const productResult = await client.query(productQueryText, [productIds]);
@@ -115,6 +120,7 @@ router.post('/', auth, async (req, res) => {
                 productId: item.productId,
                 quantity: item.quantity,
                 unitPrice: details.price,
+                rawUnitPrice: JSON.stringify({ amount: details.price, currency: "usd" }),
                 title: details.name,
                 thumbnail: details.thumbnail
             });
@@ -122,94 +128,150 @@ router.post('/', auth, async (req, res) => {
         calculatedTotal = parseFloat(calculatedTotal.toFixed(2));
         console.log(`[POST /api/orders] Calculated total: ${calculatedTotal}`);
 
-// Inside POST / handler, after total calculation
+        // Insert order
+        const newOrderId = `order_${uuidv4()}`;
+        const defaultRegionId = process.env.DEFAULT_REGION_ID || 'reg_default';
+        const defaultCurrencyCode = process.env.DEFAULT_CURRENCY || 'usd';
 
-// --- CORRECTED section ---
-// 2. Insert into "order" table
-const newOrderId = `order_${uuidv4()}`; // <<< DEFINE the new TEXT ID first using uuid
-const defaultRegionId = process.env.DEFAULT_REGION_ID || 'reg_default'; // Example default
-const defaultCurrencyCode = process.env.DEFAULT_CURRENCY || 'usd'; // Example default
+        const orderInsertQuery = `
+            INSERT INTO "order" (id, customer_id, region_id, email, currency_code, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            RETURNING id, created_at 
+        `;
+        
+        const orderResult = await client.query(orderInsertQuery, [
+            newOrderId,
+            customerId,
+            defaultRegionId,
+            userEmail,
+            defaultCurrencyCode,
+            'pending'
+        ]);
 
-// *** Verify table name "order" and column names ***
-// Use correct lowercase column names matching the 'order' table schema
-const orderInsertQuery = `
-    INSERT INTO "order" (id, customer_id, region_id, email, currency_code, status, created_at, updated_at)
-    VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-    RETURNING id, created_at 
-`; // Removed quotes, corrected case, fixed RETURNING alias
-// Now use the defined newOrderId variable as the first parameter ($1)
-const orderResult = await client.query(orderInsertQuery, [
-    newOrderId,         // <<< Use the variable defined above
-    customerId,
-    defaultRegionId,
-    userEmail,
-    defaultCurrencyCode,
-    'pending'
-]);
+        if (!orderResult.rows || orderResult.rows.length === 0) {
+            throw new Error('Failed to retrieve new Order ID after insert into "order" table.');
+        }
+        
+        const orderCreatedAt = orderResult.rows[0].created_at;
+        console.log(`[POST /api/orders] Inserted into "order" table. New Order ID: ${newOrderId}`);
 
-// Check if insert worked and RETURNING gave us rows
-if (!orderResult.rows || orderResult.rows.length === 0) {
-    throw new Error('Failed to retrieve new Order ID after insert into "order" table.');
-}
-// newOrderId is already defined, just get the timestamp
-const orderCreatedAt = orderResult.rows[0].created_at;
-console.log(`[POST /api/orders] Inserted into "order" table. New Order ID: ${newOrderId}`);
-// --- End CORRECTED section ---
-
-// 3. Insert into 'order_line_item' and 'order_item' tables...
-// ... the rest of the loop which USES newOrderId ...
-
-
-// --- CORRECTED order_line_item insert ---
-    // *** VERIFY order_line_item column names (product_id, variant_id, title, thumbnail, unit_price, created_at, updated_at) ***
-    const lineItemInsertQuery = `
-        INSERT INTO order_line_item (id, product_id, variant_id, title, thumbnail, unit_price, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $6)
-        RETURNING id
-    `; // Removed quantity, adjusted placeholders ($7,$7 -> $6,$6)
-
-    // ... inside loop ...
-for (const lineItem of lineItemsData) {
-    console.log('[LOOP START] Processing lineItem:', JSON.stringify(lineItem)); // Log item data
-    const newLineItemId = `li_${uuidv4()}`;
-    console.log('[LOOP] Attempting line_item INSERT...');
-    const lineItemResult = await client.query(lineItemInsertQuery, [ /* ... params ... */ ]);
-    console.log('[LOOP] line_item INSERT done.');
-    // const newLineItemId = lineItemResult.rows[0].id; // Definition moved up
-    const newOrderItemId = `item_${uuidv4()}`;
-    console.log('[LOOP] Attempting order_item INSERT...');
-    await client.query(orderItemInsertQuery, [ /* ... params ... */ ]);
-    console.log('[LOOP] order_item INSERT done.');
-    console.log('[LOOP END] Finished processing lineItem for product ID:', lineItem.productId);
-}
-console.log('Executing lineItemInsertQuery:', lineItemInsertQuery);
-console.log('With params:', [newLineItemId, lineItem.productId, null, lineItem.title, lineItem.thumbnail, lineItem.unitPrice, orderCreatedAt]);
-const lineItemResult = await client.query(lineItemInsertQuery, [ /* params */ ]);
-    //const newLineItemId = lineItemResult.rows[0].id; // Get the generated ID
-     // --- END CORRECTED ---
-
-// --- CORRECTED order_item insert ---
-    // *** VERIFY order_item column names (id, order_id, item_id, quantity, generation_status, report_s3_key, created_at, updated_at) ***
-    const orderItemInsertQuery = `
-        INSERT INTO order_item (id, order_id, item_id, quantity, generation_status, report_s3_key, created_at, updated_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
-    `; // Expects 7 unique parameters ($7 used twice)
-
-    const newOrderItemId = `item_${uuidv4()}`; // Define ID here
-    console.log(`[POST /api/orders] Inserting order item for Line Item ID: ${newLineItemId}`);
-
-    // Ensure parameters match the query columns correctly
-    await client.query(orderItemInsertQuery, [
-        newOrderItemId,     // $1: id
-        newOrderId,         // $2: order_id
-        newLineItemId,      // $3: item_id (links to order_line_item)
-        lineItem.quantity,  // $4: quantity
-        'pending',          // $5: generation_status
-        null,               // $6: report_s3_key
-        orderCreatedAt      // $7: created_at AND updated_at
-    ]);
-    console.log(`[POST /api/orders] order_item INSERT seems ok for item ${newOrderItemId}`); // Add log
-    // --- END CORRECTED ---
+        // First create line items
+        for (const lineItem of lineItemsData) {
+            console.log('[LOOP START] Processing lineItem:', JSON.stringify(lineItem));
+            
+            // Create line item first
+            const newLineItemId = `li_${uuidv4()}`;
+            
+            // Simplified line item query - checking schema
+            console.log('[LOOP] Getting line_item columns');
+            const lineItemColumnsQuery = await client.query(`
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_name = 'order_line_item'
+            `);
+            const lineItemColumns = lineItemColumnsQuery.rows.map(row => row.column_name);
+            console.log('[LOOP] line_item columns:', lineItemColumns);
+            
+            const lineItemInsertQuery = `
+                INSERT INTO order_line_item (
+                    id, title, thumbnail, unit_price, raw_unit_price, 
+                    created_at, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $6)
+                RETURNING id
+            `;
+            
+            console.log('[LOOP] Attempting line_item INSERT...');
+            await client.query(lineItemInsertQuery, [
+                newLineItemId,
+                lineItem.title,
+                lineItem.thumbnail,
+                lineItem.unitPrice,
+                lineItem.rawUnitPrice,
+                orderCreatedAt
+            ]);
+            console.log('[LOOP] line_item INSERT done.');
+            
+            // Create order item with exact schema from your table
+            const newOrderItemId = `item_${uuidv4()}`;
+            const emptyJsonb = JSON.stringify({});
+            
+            // Create the order item query using the exact schema columns
+            const orderItemInsertQuery = `
+                INSERT INTO order_item (
+                    id, 
+                    order_id, 
+                    version, 
+                    item_id, 
+                    quantity, 
+                    raw_quantity, 
+                    fulfilled_quantity, 
+                    raw_fulfilled_quantity, 
+                    shipped_quantity, 
+                    raw_shipped_quantity, 
+                    return_requested_quantity, 
+                    raw_return_requested_quantity, 
+                    return_received_quantity, 
+                    raw_return_received_quantity, 
+                    return_dismissed_quantity, 
+                    raw_return_dismissed_quantity, 
+                    written_off_quantity, 
+                    raw_written_off_quantity, 
+                    metadata, 
+                    created_at, 
+                    updated_at, 
+                    deleted_at, 
+                    delivered_quantity, 
+                    raw_delivered_quantity, 
+                    unit_price, 
+                    raw_unit_price, 
+                    compare_at_unit_price, 
+                    raw_compare_at_unit_price
+                )
+                VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 
+                    $11, $12, $13, $14, $15, $16, $17, $18, $19, 
+                    $20, $20, $21, $22, $23, $24, $25, $26, $27
+                )
+            `;
+            
+            console.log('[LOOP] Attempting order_item INSERT...');
+            
+            await client.query(orderItemInsertQuery, [
+                newOrderItemId,                      // id
+                newOrderId,                          // order_id
+                1,                                   // version
+                newLineItemId,                       // item_id
+                lineItem.quantity,                   // quantity
+                JSON.stringify({ quantity: lineItem.quantity }), // raw_quantity
+                0,                                   // fulfilled_quantity
+                emptyJsonb,                          // raw_fulfilled_quantity
+                0,                                   // shipped_quantity
+                emptyJsonb,                          // raw_shipped_quantity
+                0,                                   // return_requested_quantity
+                emptyJsonb,                          // raw_return_requested_quantity
+                0,                                   // return_received_quantity
+                emptyJsonb,                          // raw_return_received_quantity
+                0,                                   // return_dismissed_quantity
+                emptyJsonb,                          // raw_return_dismissed_quantity
+                0,                                   // written_off_quantity
+                emptyJsonb,                          // raw_written_off_quantity
+                null,                                // metadata (nullable)
+                orderCreatedAt,                      // created_at
+                // updated_at is $20 again (same as created_at)
+                null,                                // deleted_at (nullable)
+                0,                                   // delivered_quantity
+                emptyJsonb,                          // raw_delivered_quantity
+                lineItem.unitPrice,                  // unit_price
+                lineItem.rawUnitPrice,               // raw_unit_price
+                null,                                // compare_at_unit_price (nullable)
+                null                                 // raw_compare_at_unit_price (nullable)
+            ]);
+            
+            console.log('[LOOP] order_item INSERT done.');
+            console.log('[LOOP END] Finished processing lineItem for product ID:', lineItem.productId);
+        }
+        
         console.log(`[POST /api/orders] Inserted ${lineItemsData.length} line items and order items.`);
 
         await client.query('COMMIT');
@@ -249,7 +311,6 @@ router.put('/:id', auth, isAdmin, async (req, res) => {
             return res.status(400).json({ message: 'Total must be a non-negative number.' });
         }
 
-        // Changed from 'orders' to '"order"'
         const result = await db.query(
             'UPDATE "order" SET total = $1, status = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
             [numericTotal, status, id]
@@ -270,7 +331,6 @@ router.put('/:id', auth, isAdmin, async (req, res) => {
 router.delete('/:id', auth, isAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        // Changed from 'orders' to '"order"'
         const result = await db.query('DELETE FROM "order" WHERE id = $1 RETURNING *', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Order not found.' });
