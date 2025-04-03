@@ -5,6 +5,7 @@ const auth = require('../middlewares/auth');
 const isAdmin = require('../middlewares/isAdmin');
 const { v4: uuidv4 } = require('uuid');
 
+// --- Specific GET routes FIRST ---
 // GET ALL orders (Admin Only)
 router.get('/', auth, isAdmin, async (req, res) => {
     try {
@@ -17,52 +18,133 @@ router.get('/', auth, isAdmin, async (req, res) => {
 });
 
 // GET user's own orders
+// Replace the existing GET /my-orders route handler with this corrected version
+
+// GET user's own orders (Authenticated users)
 router.get('/my-orders', auth, async (req, res) => {
     try {
-        const userId = req.user.userId;
-        if (!userId) { 
-            return res.status(401).json({message: 'User ID not found in token.'});
+        // Use TEXT customerId from token provided by 'auth' middleware
+        const customerId = req.user?.customerId;
+        console.log(`[GET /my-orders] Attempting fetch for customerId: ${customerId}`);
+
+        // Check if customerId was found in the token payload
+        if (!customerId) {
+             return res.status(401).json({message: 'Customer ID not found in token.'});
         }
 
-        const result = await db.query('SELECT * FROM "order" WHERE user_id = $1 ORDER BY created_at DESC', [userId]);
+        // Query the "order" table using the correct 'customer_id' column
+        // Also use correct timestamp column names ('created_at' or quoted "createdAt")
+        // *** VERIFY your exact column names 'customer_id' and 'created_at'/'updated_at' casing ***
+        const queryText = `
+            SELECT id, status, currency_code, created_at, updated_at
+            FROM "order"
+            WHERE customer_id = $1  -- <<< Corrected column from user_id
+            ORDER BY created_at DESC -- <<< Corrected column name (assuming lowercase, adjust if camelCase)
+        `;
+        // Use db.query (pool) for simple selects
+        const result = await db.query(queryText, [customerId]);
+
+        console.log(`[GET /my-orders] Found ${result.rows.length} orders for customer ${customerId}`);
+
+        // Send back the array of orders found
         res.status(200).json(result.rows);
+
     } catch (error) {
-        console.error('Error fetching user orders:', error);
+        // Log any database or other unexpected errors
+        console.error(`Error fetching orders for customer ${req.user?.customerId}:`, error);
         res.status(500).json({ message: 'Server error fetching user orders.' });
     }
 });
 
+// --- GET /recent Route (Admin Only) ---
+router.get('/recent', auth, isAdmin, async (req, res) => {
+    const limit = 5; // Number of recent orders to fetch
+    try {
+        console.log(`>>> HIT /orders/recent Handler - User: ${req.user?.userId}, Role: ${req.user?.role}`); // Debug Log
+
+        // Query latest orders from the "order" table
+        // *** Verify column name created_at matches your schema (use quotes "" if needed) ***
+        const queryText = `
+            SELECT id, customer_id, status, currency_code, created_at, updated_at
+            FROM "order"
+            ORDER BY created_at DESC
+            LIMIT $1
+        `;
+        const result = await db.query(queryText, [limit]); // Use db.query (pool)
+
+        console.log(`[GET /orders/recent] Found ${result.rows.length} recent orders.`);
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+        console.error(`Error fetching recent orders for admin ${req.user?.userId}:`, error);
+        res.status(500).json({ message: 'Server error fetching recent orders.' });
+    }
+});
+
+
+// --- Parameterized GET route AFTER specific ones ---
 // GET a single order by ID
+// Replace the existing GET /:id route handler with this one
+
+// GET /:id - Get a single order by ID (Owner or Admin only)
 router.get('/:id', auth, async (req, res) => {
     try {
-        const { id } = req.params;
-        const userId = req.user.userId;
-        const userRole = req.user.role;
+        const orderId = req.params.id; // The TEXT order ID from the URL
+        const tokenCustomerId = req.user?.customerId; // TEXT customer ID from JWT payload
+        const userRole = req.user?.role;        // Role from JWT payload
+        const userIdForLogs = req.user?.userId; // User ID for logging
 
-        if (!userId) { 
-            return res.status(401).json({message: 'User ID not found in token.'});
+        // Ensure customerId exists in token (should be guaranteed by login fix)
+        if (!tokenCustomerId) {
+            console.error(`[GET /orders/:id] User ${userIdForLogs} missing customerId in token!`);
+            return res.status(401).json({message: 'Customer ID not found in token.'});
         }
 
-        const result = await db.query('SELECT * FROM "order" WHERE id = $1', [id]);
+        // Fetch the order from the database
+        // *** Verify your table name ("order") and ID column name ('id') ***
+        const queryText = `SELECT * FROM "order" WHERE id = $1`;
+        const result = await db.query(queryText, [orderId]);
 
         if (result.rows.length === 0) {
+            console.log(`[GET /orders/:id] Order not found for ID: ${orderId}`);
             return res.status(404).json({ message: 'Order not found.' });
         }
 
         const order = result.rows[0];
+        // Get the customer ID stored WITH the order record
+        // *** CRITICAL: Verify 'customer_id' is the EXACT column name in your "order" table ***
+        const orderCustomerId = order.customer_id;
 
-        // Check if the logged-in user is the owner OR an admin
-        if (order.user_id !== userId && userRole !== 'admin') {
-            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
+        // --- Detailed Log for Comparison ---
+        console.log(`[Auth Check /orders/:id] Comparing Order's CustomerID (DB): "${orderCustomerId}" (Type: ${typeof orderCustomerId})`);
+        console.log(`[Auth Check /orders/:id] with Token's CustomerID (JWT): "${tokenCustomerId}" (Type: ${typeof tokenCustomerId})`);
+        console.log(`[Auth Check /orders/:id] User Role: "${userRole}"`);
+        // --- End Log ---
+
+        // --- Corrected Authorization Check ---
+        // Check if the user is an admin OR if the customer IDs match (after trimming just in case)
+        const isOwner = (typeof orderCustomerId === 'string' && typeof tokenCustomerId === 'string' && orderCustomerId.trim() === tokenCustomerId.trim());
+        const isAdminUser = (userRole === 'admin');
+
+        if (!isOwner && !isAdminUser) {
+             // Deny access if they are NOT the owner AND they are NOT an admin
+             console.log(`[GET /orders/:id] Forbidden Access: Not owner and not admin.`);
+             return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
         }
+        // --- End Corrected Check ---
 
+        // If we reach here, access is granted
+        console.log(`[GET /orders/:id] Access granted for Order ${order.id} to Customer ${tokenCustomerId} (Role: ${userRole})`);
+        // Remember this only returns order header data currently
         res.status(200).json(order);
+
     } catch (error) {
-        console.error('Error fetching order:', error);
-        res.status(500).json({ message: 'Server error fetching order.' });
+        console.error(`[GET /orders/:id] Error fetching order ${req.params.id}:`, error);
+        res.status(500).json({ message: 'Server error fetching order.'});
     }
 });
 
+// --- Other methods ---
 // POST create a new order
 router.post('/', auth, async (req, res) => {
     console.log('[POST /api/orders] req.user received from auth middleware:', req.user);

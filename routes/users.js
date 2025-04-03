@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/db'); // Import your DB connection pool
 const { v4: uuidv4 } = require('uuid');
+const auth = require('../middlewares/auth');
 
 // /var/projects/backend-api/routes/users.js
 
@@ -224,6 +225,62 @@ router.post('/register', async (req, res) => {
          console.log('[Register] Database client released for:', email);
     }
 }); // --- End Register Route ---
+
+// Add near the end of /var/projects/backend-api/routes/users.js
+
+// GET /profile - Get current user's profile info
+router.get('/profile', auth, async (req, res) => {
+    try {
+        const userId = req.user?.userId; // Get INT userId from token
+        if (!userId) {
+            return res.status(401).json({ message: 'Authentication required.' });
+        }
+
+        console.log(`[GET /users/profile] Fetching profile for userId: ${userId}`);
+
+        // Fetch from 'users' table
+        // *** Verify column names: id, email, name, role ***
+        const userResult = await db.query(
+            'SELECT id, email, name, role FROM users WHERE id = $1',
+            [userId]
+        );
+
+        if (userResult.rows.length === 0) {
+            console.warn(`[GET /users/profile] User ${userId} found in token but not in DB!`);
+            return res.status(404).json({ message: 'User not found.' });
+        }
+        const userProfile = userResult.rows[0];
+
+        // Fetch corresponding customer ID (using email as the link)
+        let customerId = null;
+         // *** Verify 'customer' table column names: id, email, has_account ***
+        const customerResult = await db.query(
+            'SELECT id FROM customer WHERE email = $1 AND has_account = true',
+            [userProfile.email]
+        );
+        if (customerResult.rows.length > 0) {
+            customerId = customerResult.rows[0].id;
+        } else {
+             console.warn(`[GET /users/profile] No active customer record found for email ${userProfile.email}`);
+             // Proceed without customerId for profile, but orders might fail later if this happens
+        }
+
+        // Combine info (exclude password!)
+        const fullProfile = {
+            ...userProfile,
+            customerId: customerId
+        };
+
+        console.log(`[GET /users/profile] Returning profile for userId: ${userId}`);
+        res.status(200).json(fullProfile);
+
+    } catch (error) {
+        console.error(`[GET /users/profile] Error fetching profile for userId ${req.user?.userId}:`, error);
+        res.status(500).json({ message: 'Server error fetching profile.' });
+    }
+});
+
+// module.exports = router; // Should be at the end
 
 // --- Keep module.exports ---
 module.exports = router;
