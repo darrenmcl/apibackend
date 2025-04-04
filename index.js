@@ -18,7 +18,7 @@ app.use(morgan('dev')); // Logging
 
 // More detailed CORS configuration
 const corsOptions = {
-  origin: 'https://storefront.performancecorporate.com', // Specify frontend origin
+  origin: 'https://www.performancecorporate.com', // Specify frontend origin
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true, // Allow cookies/auth headers if needed across origins (though proxy helps)
