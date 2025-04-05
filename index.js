@@ -36,8 +36,10 @@ const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
 const stripeRoutes = require('./routes/stripe');
+const categoryRoutes = require('./routes/categories');
 
 // Routes
+app.use('categories', categoryRoutes);
 app.use('/files', fileRoutes); // Now matches /api/files/upload
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);

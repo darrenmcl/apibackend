@@ -33,6 +33,78 @@ async function generateUniqueSlug(name, currentId = null) {
     return slug;
 }
 
+// Add this back into /var/projects/backend-api/routes/products.js
+// Make sure it's placed correctly relative to other routes (e.g., before /:id if needed, although the regex on /:id helps)
+
+// *** CORRECTED: GET a single product by SLUG (public) ***
+router.get('/slug/:slug', async (req, res) => {
+    // Use a distinct variable name to avoid shadowing
+    const requestedSlug = req.params.slug;
+    const requestStartTime = new Date().toISOString(); // For consistent logging timestamp per request
+
+    console.log(`[${requestStartTime}] [GET /products/slug/:slug] Request received for slug: ${requestedSlug}`);
+
+    // Validate slug parameter
+    if (!requestedSlug || typeof requestedSlug !== 'string' || requestedSlug.trim() === '') {
+        console.log(`[${requestStartTime}] [GET /products/slug/:slug] Invalid slug parameter received.`);
+        return res.status(400).json({ message: 'Invalid slug parameter.' });
+    }
+
+    try {
+        console.log(`[${requestStartTime}] [GET /products/slug/:slug] Attempting DB query for slug: ${requestedSlug}`);
+        const dbQueryStartTime = Date.now();
+
+        // SQL query joining products and categories to get product details AND category slug
+        const query = `
+            SELECT p.id, p.name, p.description, p.price, p.image, p.featured,
+                   p.created_at, p.updated_at, p.slug,
+                   p.category_id, c.slug AS "categorySlug"
+            FROM products p
+            LEFT JOIN categories c ON p.category_id = c.id
+            WHERE p.slug = $1
+            LIMIT 1`;
+
+        // Execute the query using the pool imported as 'db'
+        const result = await db.query(query, [requestedSlug]);
+        const dbQueryDuration = Date.now() - dbQueryStartTime;
+
+        if (result.rows.length === 0) {
+            // No product found for this slug
+            console.log(`[${requestStartTime}] [GET /products/slug/:slug] DB query successful (${dbQueryDuration}ms). Product NOT FOUND for slug: ${requestedSlug}`);
+            // Send 404 Not Found
+            return res.status(404).json({ message: 'Product not found.' });
+        }
+
+        // Product found
+        const product = result.rows[0];
+
+        // Optional but recommended: Convert numeric price from string (pg default) to number
+        if (product.price !== null && product.price !== undefined) {
+             product.price = parseFloat(product.price);
+        }
+        // Ensure categorySlug is null if there was no match (LEFT JOIN) instead of potentially undefined
+        if (product.categorySlug === undefined) {
+             product.categorySlug = null;
+        }
+
+
+        console.log(`[${requestStartTime}] [GET /products/slug/:slug] DB query successful (${dbQueryDuration}ms). Product FOUND: ID ${product.id}, Category Slug: ${product.categorySlug}`);
+        // Send 200 OK with the product data (now includes categorySlug)
+        res.status(200).json(product);
+
+    } catch (error) {
+        // Handle potential database errors during the query
+        console.error(`[${requestStartTime}] [GET /products/slug/:slug] Error fetching product by slug "${requestedSlug}":`, error);
+        // Send 500 Internal Server Error
+        res.status(500).json({ message: 'Server error fetching product.' });
+    }
+});
+
+// --- Ensure other routes like GET /:id, POST /, PUT /:id, DELETE /:id are also present ---
+
+// module.exports = router; // At the end of the file
+
+
 // GET all products (public) - Added 'slug' to SELECT
 router.get('/', async (req, res) => {
     console.log(`[${new Date().toISOString()}] [GET /products] Request received.`);
@@ -51,27 +123,6 @@ router.get('/', async (req, res) => {
     } catch (error) {
         console.error(`[${new Date().toISOString()}] [GET /products] Error during processing:`, error);
         res.status(500).json({ message: 'Server error fetching products.' });
-    }
-});
-
-// *** NEW: GET a single product by SLUG (public) ***
-router.get('/slug/:slug', async (req, res) => {
-    console.log(`[${new Date().toISOString()}] [GET /products/slug/:slug] Request received for slug: ${req.params.slug}`);
-    try {
-        const { slug } = req.params;
-        const result = await db.query(
-            'SELECT id, name, description, price, image, featured, created_at, updated_at, slug FROM products WHERE slug = $1',
-            [slug]
-        );
-        if (result.rows.length === 0) {
-            console.log(`[${new Date().toISOString()}] [GET /products/slug/:slug] Product not found for slug: ${slug}`);
-            return res.status(404).json({ message: 'Product not found.' });
-        }
-        console.log(`[${new Date().toISOString()}] [GET /products/slug/:slug] Product found for slug: ${slug}`);
-        res.status(200).json(result.rows[0]);
-    } catch (error) {
-        console.error(`[${new Date().toISOString()}] [GET /products/slug/:slug] Error fetching product by slug: ${req.params.slug}`, error);
-        res.status(500).json({ message: 'Server error fetching product.' });
     }
 });
 
