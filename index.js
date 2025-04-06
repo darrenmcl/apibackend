@@ -14,7 +14,6 @@ const PORT = process.env.PORT || 3012;
 app.use(express.json()); // Make sure this comes BEFORE routes
 app.use(express.urlencoded({ extended: true })); // For parsing application/x-www-form-urlencoded
 app.use(morgan('dev')); // Logging
-// const cors = require('cors');
 
 // More detailed CORS configuration
 const corsOptions = {
@@ -37,10 +36,12 @@ const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
 const stripeRoutes = require('./routes/stripe');
 const categoryRoutes = require('./routes/categories');
+const chatRoutes = require('./routes/chat');
 
 // Routes
-app.use('categories', categoryRoutes);
-app.use('/files', fileRoutes); // Now matches /api/files/upload
+app.use('/chat', chatRoutes);
+app.use('/categories', categoryRoutes);
+app.use('/files', fileRoutes);
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);

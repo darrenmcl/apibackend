@@ -3,6 +3,35 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/db'); // Assuming same db config
 
+
+// *** ADD THIS ROUTE HANDLER ***
+// GET all categories (public)
+router.get('/', async (req, res) => {
+    const requestStartTime = new Date().toISOString();
+    console.log(`[${requestStartTime}] [GET /categories] Request received.`);
+    try {
+        console.log(`[${requestStartTime}] [GET /categories] Attempting DB query...`);
+        const dbQueryStartTime = Date.now();
+        // Select necessary fields - add 'image' if your categories table has it
+        const query = `
+            SELECT id, name, slug, description
+            FROM categories
+            ORDER BY name ASC`; // Order alphabetically for consistent display
+        const result = await db.query(query);
+        const dbQueryDuration = Date.now() - dbQueryStartTime;
+
+        console.log(`[${requestStartTime}] [GET /categories] DB query successful (${dbQueryDuration}ms). Found ${result.rows.length} categories.`);
+        res.status(200).json(result.rows);
+
+    } catch (error) {
+        console.error(`[${requestStartTime}] [GET /categories] Error fetching categories:`, error);
+        res.status(500).json({ message: 'Server error fetching categories.' });
+    }
+});
+// *** END OF ADDED ROUTE HANDLER ***
+
+
+
 // GET category details by slug (public)
 router.get('/slug/:slug', async (req, res) => {
     const requestedSlug = req.params.slug;
