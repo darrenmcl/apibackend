@@ -1,0 +1,22 @@
+# Ignore node_modules — we’ll install fresh inside the container
+node_modules
+
+# Ignore logs
+*.log
+logs
+npm-debug.log*
+
+# Ignore environment and config files (unless you want to copy them manually)
+.env
+.env.*
+
+# Ignore OS and editor files
+.DS_Store
+*.swp
+*.swo
+.vscode
+.idea
+
+# Ignore build artifacts
+dist
+build

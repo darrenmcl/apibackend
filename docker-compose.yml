@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: PCPLm4hnigq#2025
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+    container_name: backend-api
+    ports:
+      - "3012:3012"
+    env_file:
+      - .env
+    volumes:
+      - .:/usr/src/app
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+  chat-worker:
+    build:
+      context: ./chat-worker
+    container_name: chat-worker
+    env_file:
+      - ./chat-worker/.env
+    volumes:
+      - ./chat-worker:/usr/src/app
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:

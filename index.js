@@ -1,34 +1,46 @@
-// /var/projects/backend-api/index.js
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
-
-// Load environment variables BEFORE creating any services
-dotenv.config();
+const { connectRabbit } = require('./lib/rabbit');
+connectRabbit(); // Call once on startup
+dotenv.config(); // Load environment variables
 
 const app = express();
 const PORT = process.env.PORT || 3012;
 
-// Middleware - IMPORTANT: Order matters!
-app.use(express.json()); // Make sure this comes BEFORE routes
-app.use(express.urlencoded({ extended: true })); // For parsing application/x-www-form-urlencoded
-app.use(morgan('dev')); // Logging
+// --- Middleware (order matters!) ---
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('dev'));
 
-// More detailed CORS configuration
+// --- CORS ---
 const corsOptions = {
-  origin: 'https://www.performancecorporate.com', // Specify frontend origin
+  origin: function (origin, callback) {
+    const allowed = [
+      'https://performancecorporate.com',
+      'https://www.performancecorporate.com',
+    ];
+    if (!origin || allowed.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS'));
+    }
+  },
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true, // Allow cookies/auth headers if needed across origins (though proxy helps)
+  credentials: true,
   preflightContinue: false,
   optionsSuccessStatus: 204
 };
 
-// Update the middleware to use corsOptions
 app.use(cors(corsOptions));
 
-// Import routes
+// --- PUBLIC ROUTES FIRST (like /chat) ---
+const chatRoutes = require('./routes/chat');
+app.use('/chat', chatRoutes); // ✅ public chatbot route
+
+// --- PROTECTED ROUTES (e.g. behind auth middleware) ---
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
@@ -36,10 +48,7 @@ const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
 const stripeRoutes = require('./routes/stripe');
 const categoryRoutes = require('./routes/categories');
-const chatRoutes = require('./routes/chat');
 
-// Routes
-app.use('/chat', chatRoutes);
 app.use('/categories', categoryRoutes);
 app.use('/files', fileRoutes);
 app.use('/users', userRoutes);
@@ -48,12 +57,11 @@ app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
 app.use('/', stripeRoutes);
 
-// Health check endpoint
+// --- DEV / TEST ROUTES ---
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'API is running! You may make requests' });
 });
 
-// Test route specifically for the file routes
 app.get('/test-file-routes', (req, res) => {
   res.status(200).json({ 
     message: 'File routes test endpoint', 
@@ -62,7 +70,6 @@ app.get('/test-file-routes', (req, res) => {
   });
 });
 
-// Debug route to check request body parsing
 app.post('/debug/echo', (req, res) => {
   res.json({
     body: req.body,
@@ -73,7 +80,7 @@ app.post('/debug/echo', (req, res) => {
   });
 });
 
-// Global error handler - Make this more informative for debugging
+// --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
   console.error('Global error handler caught:', err);
   res.status(500).json({ 
@@ -85,11 +92,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Handle 404 errors
+// --- 404 HANDLER ---
 app.use((req, res) => {
   res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} not found` });
 });
 
+// --- START SERVER ---
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
   console.log(`File upload endpoint available at: http://localhost:${PORT}/api/files/upload`);
