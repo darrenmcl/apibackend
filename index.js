@@ -14,30 +14,30 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// --- CORS ---
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowed = [
-      'https://performancecorporate.com',
-      'https://www.performancecorporate.com',
-    ];
-    if (!origin || allowed.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Blocked by CORS'));
-    }
-  },
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  preflightContinue: false,
-  optionsSuccessStatus: 204
+// Load comma-separated origins from .env
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+  : [];
+
+const corsOptionsDelegate = function (req, callback) {
+  const requestOrigin = req.header('Origin');
+  const isAllowed = allowedOrigins.includes(requestOrigin);
+
+  const corsOptions = {
+    origin: isAllowed ? requestOrigin : false,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
+  };
+
+  callback(null, corsOptions);
 };
 
-app.use(cors(corsOptions));
+app.use(cors(corsOptionsDelegate));
+
 
 // --- PUBLIC ROUTES FIRST (like /chat) ---
-const chatRoutes = require('./routes/chat');
+const chatRoutes = require('./routes/chatRoutes');
 app.use('/chat', chatRoutes); // ✅ public chatbot route
 
 // --- PROTECTED ROUTES (e.g. behind auth middleware) ---

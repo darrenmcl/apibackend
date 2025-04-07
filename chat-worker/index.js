@@ -1,7 +1,7 @@
 require('dotenv').config();
 const amqp = require('amqplib');
 const AWS = require('aws-sdk'); // ✅ You need this to use AWS.SES
-
+console.log('[DEBUG] RABBITMQ_URL:', process.env.RABBITMQ_URL);
 // Initialize the SES client
 const ses = new AWS.SES({
   region: process.env.AWS_REGION
