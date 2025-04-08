@@ -48,15 +48,19 @@ async function generateUniqueSlug(name, currentId = null) {
 
 
 // *** GET all products (public) - MODIFIED to include category_slug ***
+// Modify GET / in routes/products.js
 router.get('/', async (req, res) => {
     const requestStartTime = new Date().toISOString();
-    console.log(`[${requestStartTime}] [GET /products] Request received.`);
+    // ---> CHECK FOR QUERY PARAMETER <---
+    const { categorySlug } = req.query;
+    console.log(`[${requestStartTime}] [GET /products] Request received. ${categorySlug ? `Filtering by categorySlug: "${categorySlug}"` : 'Fetching all.'}`);
+
     try {
         console.log(`[${requestStartTime}] [GET /products] Attempting DB query...`);
         const dbQueryStartTime = Date.now();
 
-        // *** MODIFIED QUERY: Added LEFT JOIN and selected category_slug ***
-        const query = `
+        // Base query includes join and categorySlug selection
+        let query = `
             SELECT
                 p.id, p.name, p.description, p.price, p.image, p.featured,
                 p.created_at, p.updated_at,
@@ -64,30 +68,40 @@ router.get('/', async (req, res) => {
                 p.category_id,
                 c.slug AS "categorySlug"
             FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id
-            ORDER BY p.created_at DESC`;
+            LEFT JOIN categories c ON p.category_id = c.id `; // Note space at the end
 
-        const result = await db.query(query);
-        const dbQueryDuration = Date.now() - dbQueryStartTime;
-        console.log(`[${requestStartTime}] [GET /products] DB query successful (${dbQueryDuration}ms). Found ${result.rows.length} rows.`);
+        const params = [];
+        let paramIndex = 1;
 
-        // Process results (e.g., parse price) before sending
-        const products = result.rows.map(product => ({
-            ...product,
-            price: (product.price !== null && product.price !== undefined) ? parseFloat(product.price) : null,
-            categorySlug: product.categorySlug // Will be null if category_id was null or category didn't exist
-        }));
+        // ---> ADD WHERE CLAUSE IF FILTERING <---
+        if (categorySlug) {
+            query += ` WHERE c.slug = $${paramIndex++} `; // Filter by category slug
+            params.push(categorySlug);
+        }
 
-        console.log(`[${requestStartTime}] [GET /products] Sending ${products.length} products in response...`);
-        res.status(200).json(products);
-        console.log(`[${requestStartTime}] [GET /products] Response sent.`);
+        query += ' ORDER BY p.created_at DESC'; // Add ordering
+
+        console.log(`Executing query: ${query.replace(/\s+/g, ' ')} with params:`, params);
+        const result = await db.query(query, params);
+        // ... rest of the handler (processing results, sending response) ...
+         const dbQueryDuration = Date.now() - dbQueryStartTime;
+         console.log(`[<span class="math-inline">\{requestStartTime\}\] \[GET /products\] DB query successful \(</span>{dbQueryDuration}ms). Found ${result.rows.length} rows.`);
+
+         const products = result.rows.map(product => ({
+             ...product,
+             price: (product.price !== null && product.price !== undefined) ? parseFloat(product.price) : null,
+             categorySlug: product.categorySlug
+         }));
+
+         console.log(`[${requestStartTime}] [GET /products] Sending ${products.length} products in response...`);
+         res.status(200).json(products);
+         console.log(`[${requestStartTime}] [GET /products] Response sent.`);
 
     } catch (error) {
         console.error(`[${requestStartTime}] [GET /products] Error during processing:`, error);
         res.status(500).json({ message: 'Server error fetching products.' });
     }
 });
-
 // *** GET a single product by SLUG (public) - CORRECTED (Looks Good) ***
 router.get('/slug/:slug', async (req, res) => {
     const requestedSlug = req.params.slug;
