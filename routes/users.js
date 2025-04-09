@@ -157,6 +157,26 @@ router.get('/profile', auth, async (req, res) => {
     }
 });
 
+// POST /logout - Clears auth_token cookie
+router.post('/logout', (req, res) => {
+  try {
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'Strict',
+      path: '/',
+    });
+
+    console.log('[Logout] auth_token cookie cleared');
+    res.status(200).json({ message: 'Logout successful' });
+  } catch (error) {
+    console.error('[Logout] Error clearing cookie:', error);
+    res.status(500).json({ message: 'Server error during logout.' });
+  }
+});
+
+
+
 // module.exports = router; // Should be at the end
 
 // --- Keep module.exports ---
