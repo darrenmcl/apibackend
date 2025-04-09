@@ -3,6 +3,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const dotenv = require('dotenv');
 const { connectRabbit } = require('./lib/rabbit');
+const cookieParser = require('cookie-parser'); // Require the package
 connectRabbit(); // Call once on startup
 dotenv.config(); // Load environment variables
 
@@ -13,6 +14,7 @@ const PORT = process.env.PORT || 3012;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(cookieParser());
 
 // Load comma-separated origins from .env
 const allowedOrigins = process.env.ALLOWED_ORIGINS
