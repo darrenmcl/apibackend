@@ -38,7 +38,9 @@ app.use(cors(corsOptionsDelegate));
 
 // --- PUBLIC ROUTES FIRST (like /chat) ---
 const chatRoutes = require('./routes/chatRoutes');
+const contactRoutes = require('./routes/contactRoutes');
 app.use('/chat', chatRoutes); // ✅ public chatbot route
+app.use('/contact', contactRoutes);
 
 // --- PROTECTED ROUTES (e.g. behind auth middleware) ---
 const userRoutes = require('./routes/users');

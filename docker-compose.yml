@@ -1,5 +1,4 @@
 version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3-management
@@ -13,7 +12,7 @@ services:
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
-
+    
   backend:
     build:
       context: .
@@ -27,7 +26,7 @@ services:
     depends_on:
       - rabbitmq
     restart: unless-stopped
-
+    
   chat-worker:
     build:
       context: ./chat-worker
@@ -39,6 +38,18 @@ services:
     depends_on:
       - rabbitmq
     restart: unless-stopped
-
+    
+  email-consumer:
+    build:
+      context: ./email
+    container_name: email-consumer
+    env_file:
+      - .env
+    volumes:
+      - ./email:/usr/src/app
+    depends_on:
+      - rabbitmq
+    restart: unless-stopped
+    
 volumes:
   rabbitmq_data:

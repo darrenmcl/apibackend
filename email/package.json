@@ -1,0 +1,12 @@
+{
+  "name": "email-consumer",
+  "version": "1.0.0",
+  "description": "Email notification service",
+  "main": "emailConsumer.js",
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "aws-sdk": "^2.1475.0",
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.5"
+  }
+}
