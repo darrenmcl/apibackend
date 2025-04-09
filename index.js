@@ -39,6 +39,7 @@ app.use(cors(corsOptionsDelegate));
 // --- PUBLIC ROUTES FIRST (like /chat) ---
 const chatRoutes = require('./routes/chatRoutes');
 const contactRoutes = require('./routes/contactRoutes');
+const logRoutes = require('./routes/log.js');
 app.use('/chat', chatRoutes); // ✅ public chatbot route
 app.use('/contact', contactRoutes);
 
@@ -51,6 +52,7 @@ const fileRoutes = require('./routes/fileRoutes');
 const stripeRoutes = require('./routes/stripe');
 const categoryRoutes = require('./routes/categories');
 
+app.use('/log', logRoutes);
 app.use('/categories', categoryRoutes);
 app.use('/files', fileRoutes);
 app.use('/users', userRoutes);
