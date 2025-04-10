@@ -5,7 +5,7 @@ const db = require('../config/db'); // Your database connection setup
 const auth = require('../middlewares/auth'); // Your auth middleware
 const isAdmin = require('../middlewares/isAdmin'); // Your admin check middleware
 const slugify = require('slugify'); // Slug generation library
-
+const logger = require('../lib/logger');
 // --- Slug Generation Helper ---
 // NOTE: This uses hyphens to be consistent with your products.js
 // Consider moving this to a shared utils file if used in multiple route files.
@@ -348,7 +348,48 @@ router.delete('/:id(\\d+)', auth, isAdmin, async (req, res) => { // Added auth, 
     }
 });
 
-// Make sure module.exports = router; is still at the very end of the file
+// Add this inside /var/projects/backend-api/routes/categories.js
+// (Make sure 'logger' is required/imported at the top if you replaced console.log)
+// const logger = require('../lib/logger'); // Example import
 
+// GET a single category by NUMERIC ID (Public)
+router.get('/:id(\\d+)', async (req, res) => { // Use regex \\d+ to ensure ID is numeric
+    const requestStartTime = new Date().toISOString();
+    const { id } = req.params;
+    //logger.info(`[${requestStartTime}] [GET /categories/:id] Request received for ID: ${id}`);
+
+    // Validate that ID is indeed a number (integer)
+    const categoryId = parseInt(id, 10);
+    if (isNaN(categoryId) || categoryId <= 0) {
+        // This check might be redundant due to regex \\d+ but good practice
+      //  logger.warn(`[${requestStartTime}] [GET /categories/:id] Invalid ID received: ${id}`);
+        return res.status(400).json({ message: 'Invalid category ID format.' });
+    }
+
+    try {
+        // Query to select the category by its primary key (id)
+        const query = 'SELECT id, name, slug, description FROM categories WHERE id = $1';
+        //logger.info(`[${requestStartTime}] [GET /categories/:id] Attempting DB query for ID: ${categoryId}`);
+        const dbQueryStartTime = Date.now();
+        const result = await db.query(query, [categoryId]); // Use the parsed integer ID
+        const dbQueryDuration = Date.now() - dbQueryStartTime;
+
+        // Check if a category was found
+        if (result.rows.length === 0) {
+           // logger.warn(`[${requestStartTime}] [GET /categories/:id] DB query successful (${dbQueryDuration}ms). Category NOT FOUND for ID: ${categoryId}`);
+            return res.status(404).json({ message: 'Category not found.' });
+        }
+
+        // Category found, return it
+        const category = result.rows[0];
+        logger.info(`[${requestStartTime}] [GET /categories/:id] DB query successful (${dbQueryDuration}ms). Category FOUND: ID ${category.id}, Name: ${category.name}`);
+        res.status(200).json(category); // Return the single category object
+
+    } catch (error) {
+        // Handle unexpected database or other errors
+        logger.error({ err: error }, `[${requestStartTime}] [GET /categories/:id] Error fetching category ID ${categoryId}`);
+        res.status(500).json({ message: 'Server error fetching category details.' });
+    }
+});
 
 module.exports = router; // Ensure this is at the very end

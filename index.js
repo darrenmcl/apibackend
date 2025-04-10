@@ -1,7 +1,7 @@
+const dotenv = require('dotenv');
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
-const dotenv = require('dotenv');
 const { connectRabbit } = require('./lib/rabbit');
 const cookieParser = require('cookie-parser'); // Require the package
 connectRabbit(); // Call once on startup

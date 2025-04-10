@@ -1,36 +1,46 @@
-// /var/projects/backend-api/middlewares/auth.js (CORRECTED FOR COOKIES)
+// /var/projects/backend-api/middlewares/auth.js (using Pino logger)
 const jwt = require('jsonwebtoken');
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret'; // Ensure this matches signing secret
+const logger = require('../lib/logger'); // <<< Import the Pino logger
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret';
 
 function auth(req, res, next) {
-    console.log('[Auth Middleware] Running check...');
-    // --- Read token from HttpOnly cookie ---
-    const token = req.cookies?.auth_token; // Reads cookie named 'auth_token'
+    logger.info('[Auth Middleware] Running check...'); // <<< Use logger.info
+    // Use debug level for potentially sensitive info like all cookies, include as object
+    logger.debug({ cookies: req.cookies }, '[Auth Middleware] req.cookies received'); // <<< Log cookies object
+    // ---> ADD THIS LINE <---
+    logger.debug(`[Auth Middleware Raw] Cookie Header Received: ${req.headers.cookie}`);
+    // ---> END ADDED LINE <---
+    logger.debug({ cookies: req.cookies }, '[Auth Middleware] req.cookies received (parsed):'); // Keep this too
+    // ... rest of the function ...
 
-    console.log('[Auth Middleware] Token from cookie:', token ? 'Found' : 'MISSING');
+    let token = null;
+    if (req.cookies?.auth_token) {
+        token = req.cookies.auth_token;
+        logger.info('[Auth Middleware] Token found in cookie.');
+    } else {
+         logger.warn('[Auth Middleware] Token NOT found in cookie.'); // Use logger.warn
+    }
+
+    // ... (Fallback header check logic if you kept it) ...
+
+    logger.info(`[Auth Middleware] Final Token Found: ${token ? 'Yes' : 'No'}`);
 
     if (!token) {
-        console.log('[Auth Middleware] No token found in cookie. Denying.');
-        // Changed status to 401 for missing token
+        logger.warn('[Auth Middleware] No token found. Denying access.'); // Use logger.warn
         return res.status(401).json({ message: 'Access denied. No token provided.' });
     }
 
     try {
-        console.log('[Auth Middleware] Verifying token from cookie...');
-        // Verify the token found in the cookie
+        logger.debug('[Auth Middleware] Verifying token...'); // Use logger.debug
         const decoded = jwt.verify(token, JWT_SECRET);
-        console.log('[Auth Middleware] Token verified. Decoded Payload:', decoded);
-
-        // Attach the decoded payload to the request object for subsequent handlers
+        // Log important parts of payload, avoid logging entire token unless debugging
+        logger.info({ userId: decoded.userId, role: decoded.role }, '[Auth Middleware] Token verified.'); // Log structured data
         req.user = decoded;
-        next(); // Proceed to the next middleware or route handler
-
+        next();
     } catch (error) {
-        // Handle errors during verification (invalid signature, expired token etc.)
-        console.log('[Auth Middleware] Token verification failed:', error.message);
-        // Changed status to 401 for invalid token cases
+        // Log the actual error object for details
+        logger.error({ err: error }, `[Auth Middleware] Token verification failed: ${error.message}`); // Use logger.error
         res.status(401).json({ message: 'Invalid or expired token.' });
-        // Consider clearing the bad cookie? res.clearCookie('auth_token', { path: '/' });
     }
 }
 

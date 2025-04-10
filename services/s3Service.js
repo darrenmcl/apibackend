@@ -1,25 +1,32 @@
 // /var/projects/backend-api/services/s3Service.js
-
 const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const dotenv = require('dotenv');
+const logger = require('../lib/logger');
 
 // Load environment variables
 dotenv.config();
 
-// Log S3 configuration for debugging
-console.log('S3 Configuration:');
-console.log(`- Region: ${process.env.AWS_REGION || 'not set'}`);
-console.log(`- Bucket: ${process.env.S3_BUCKET_NAME || 'not set'}`);
-console.log(`- Access Key ID: ${process.env.AWS_ACCESS_KEY_ID ? '***' + process.env.AWS_ACCESS_KEY_ID.slice(-4) : 'not set'}`);
-console.log(`- Secret Access Key: ${process.env.AWS_SECRET_ACCESS_KEY ? '******' : 'not set'}`);
+// Use S3-specific environment variables with fallbacks
+const s3Region = process.env.S3_AWS_REGION || process.env.AWS_REGION || 'us-east-1';
+const s3AccessKey = process.env.S3_AWS_ACCESS_KEY_ID || process.env.AWS_ACCESS_KEY_ID;
+const s3SecretKey = process.env.S3_AWS_SECRET_ACCESS_KEY || process.env.AWS_SECRET_ACCESS_KEY;
+const BUCKET_NAME = process.env.S3_BUCKET_NAME;
+
+// Log S3 configuration for debugging (without revealing full credentials)
+logger.info({
+  region: s3Region,
+  bucket: BUCKET_NAME,
+  hasAccessKey: !!s3AccessKey,
+  hasSecretKey: !!s3SecretKey
+}, 'S3Service initialized');
 
 // Initialize the S3 client once (outside of any functions)
 const s3Client = new S3Client({
-  region: process.env.AWS_REGION,
+  region: s3Region,
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+    accessKeyId: s3AccessKey,
+    secretAccessKey: s3SecretKey
   }
 });
 
@@ -32,34 +39,34 @@ const s3Client = new S3Client({
  */
 async function uploadFileToS3(fileBuffer, key, contentType) {
   try {
-    console.log(`Starting S3 upload for key: ${key}`);
+    logger.info({ key, contentType }, 'Starting S3 multipart upload');
     
     // Validate input
     if (!fileBuffer || !Buffer.isBuffer(fileBuffer)) {
       throw new Error('Invalid file buffer');
     }
     
-    if (!process.env.S3_BUCKET_NAME) {
+    if (!BUCKET_NAME) {
       throw new Error('S3_BUCKET_NAME environment variable is not set');
     }
     
     const upload = new Upload({
       client: s3Client,
       params: {
-        Bucket: process.env.S3_BUCKET_NAME,
+        Bucket: BUCKET_NAME,
         Key: key,
         Body: fileBuffer,
         ContentType: contentType,
         ACL: 'public-read' // Adjust based on your requirements
       }
     });
-
+    
     // Upload and wait for completion
     const result = await upload.done();
-    console.log(`Successfully uploaded file to S3: ${key}`);
+    logger.info({ key, location: result.Location }, 'Successfully uploaded file to S3');
     return result;
   } catch (error) {
-    console.error("Error uploading file to S3:", error);
+    logger.error({ err: error, key }, "Error uploading file to S3");
     throw error;
   }
 }
