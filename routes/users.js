@@ -164,5 +164,73 @@ router.post('/logout', (req, res) => {
   }
 });
 
+// Add this to your routes/users.js file
+
+// Test endpoint for cookie functionality
+router.get('/test-cookie', (req, res) => {
+  // Log request details
+  console.log('[Test Cookie] Request received with:');
+  console.log(`- Hostname: ${req.hostname}`);
+  console.log(`- Protocol: ${req.protocol}`);
+  console.log(`- Original URL: ${req.originalUrl}`);
+  console.log('- Headers:', {
+    origin: req.headers.origin,
+    host: req.headers.host,
+    referer: req.headers.referer,
+    'user-agent': req.headers['user-agent']
+  });
+  
+  // Check existing cookies
+  console.log('[Test Cookie] Existing cookies:', req.cookies);
+  
+  // Generate a test value with timestamp
+  const timestamp = new Date().toISOString();
+  const testValue = `test-${timestamp}`;
+  
+  // Set a test cookie with our cookie config
+  const cookieOptions = getCookieConfig({}, req);
+  console.log('[Test Cookie] Setting cookie with options:', cookieOptions);
+  
+  res.cookie('test_auth_cookie', testValue, cookieOptions);
+  
+  // Also try setting a basic cookie without options
+  res.cookie('basic_test_cookie', `basic-${timestamp}`, { path: '/' });
+  
+  // Return informative response
+  res.json({ 
+    success: true,
+    message: 'Test cookies set. Check your browser cookies to see if they were saved.',
+    testValue,
+    cookieConfig: cookieOptions,
+    requestInfo: {
+      timestamp,
+      hostname: req.hostname,
+      protocol: req.protocol,
+      headers: {
+        origin: req.headers.origin,
+        host: req.headers.host
+      },
+      cookies: req.cookies
+    },
+    instructions: "After receiving this response, try refreshing this page or making another request to see if the cookies are included."
+  });
+});
+
+// Test endpoint to verify cookie receipt
+router.get('/check-cookies', (req, res) => {
+  // Log the cookies received
+  console.log('[Check Cookies] Cookies received:', req.cookies);
+  
+  // Return a response with the cookies we received
+  res.json({
+    success: true,
+    message: 'Cookie check complete',
+    receivedCookies: req.cookies,
+    hasCookies: Object.keys(req.cookies).length > 0,
+    hasTestCookie: !!req.cookies.test_auth_cookie,
+    hasAuthToken: !!req.cookies.auth_token
+  });
+});
+
 // --- Keep module.exports ---
 module.exports = router;

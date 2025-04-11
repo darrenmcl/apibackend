@@ -21,22 +21,53 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
   : [];
 
+// Add development origins when not in production
+if (process.env.NODE_ENV !== 'production') {
+  allowedOrigins.push('http://localhost:4321'); // Astro default port
+  allowedOrigins.push('http://localhost:3012'); // Common dev port
+}
+
+// For debugging - log the allowed origins
+console.log('[CORS] Allowed origins:', allowedOrigins);
+
 const corsOptionsDelegate = function (req, callback) {
   const requestOrigin = req.header('Origin');
-  const isAllowed = allowedOrigins.includes(requestOrigin);
-
-  const corsOptions = {
-    origin: isAllowed ? requestOrigin : false,
+  
+  // Check if the origin is in our allowed list or if we should allow all in development
+  let corsOptions;
+  
+  if (!requestOrigin) {
+    // If no origin (like server-to-server requests), allow the request
+    corsOptions = { origin: false };
+  } else if (allowedOrigins.includes(requestOrigin) || allowedOrigins.includes('*')) {
+    // Specific origin is allowed or we allow all origins
+    corsOptions = { 
+      origin: requestOrigin,
+      credentials: true // CRITICAL for cookies
+    };
+  } else {
+    // Not allowed origin
+    console.warn(`[CORS] Rejecting request from origin: ${requestOrigin}`);
+    corsOptions = { origin: false };
+  }
+  
+  // Common options for all requests
+  corsOptions = {
+    ...corsOptions,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization']
+    credentials: true, // Always allow credentials
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Content-Range', 'X-Content-Range', 'set-cookie'],
+    maxAge: 86400 // Cache preflight response for 24 hours
   };
-
+  
+  // Log CORS decision for debugging
+  console.log(`[CORS] Request from origin: ${requestOrigin} => ${corsOptions.origin ? 'Allowed' : 'Rejected'}`);
+  
   callback(null, corsOptions);
 };
 
 app.use(cors(corsOptionsDelegate));
-
 
 // --- PUBLIC ROUTES FIRST (like /chat) ---
 const chatRoutes = require('./routes/chatRoutes');
