@@ -195,47 +195,37 @@ router.get('/', auth, isAdmin, async (req, res) => {
     }
 });
 
-// DELETE /files/:key - Delete file (from S3) - Admin Only
+// In your fileRoutes.js
 router.delete('/:key(*)', auth, isAdmin, async (req, res) => {
-    const fileKey = req.params.key;
-
-    // Validate S3 configuration and file key
-    if (!checkS3Config(res)) return;
+  const fileKey = req.params.key;
+  
+  if (!BUCKET_NAME) {
+    return res.status(500).json({ message: 'Server configuration error: Target bucket not specified.' });
+  }
+  
+  if (!fileKey) {
+    return res.status(400).json({ message: 'File key is required for deletion.' });
+  }
+  
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: fileKey,
+    });
     
-    if (!fileKey) {
-        logger.warn('Delete attempt with no file key');
-        return res.status(400).json({ message: 'File key is required for deletion.' });
-    }
-
-    try {
-        logger.info({ bucket: BUCKET_NAME, key: fileKey }, 'Attempting to delete file from S3');
-        
-        const command = new DeleteObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: fileKey,
-        });
-
-        await s3Client.send(command);
-
-        logger.info({ key: fileKey }, 'File deleted successfully from S3');
-        res.status(200).json({ message: 'File deleted successfully.', key: fileKey });
-
-    } catch (error) {
-        logger.error({ err: error, key: fileKey }, 'S3 delete error');
-        
-        // Handle specific error cases
-        if (error.name === 'NoSuchKey') {
-            return res.status(404).json({
-                message: 'File not found in storage.',
-                error: error.message
-            });
-        }
-        
-        res.status(500).json({ 
-            message: 'Error deleting file from storage.', 
-            error: error.message || 'Unknown error' 
-        });
-    }
+    await s3Client.send(command);
+    
+    return res.status(200).json({ 
+      message: 'File deleted successfully.', 
+      key: fileKey 
+    });
+    
+  } catch (error) {
+    logger.error({ err: error, key: fileKey }, 'Error deleting file from S3');
+    return res.status(500).json({ 
+      message: 'Error deleting file from storage.', 
+      error: error.message || 'Unknown error' 
+    });
+  }
 });
-
 module.exports = router;

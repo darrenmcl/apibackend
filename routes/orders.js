@@ -4,6 +4,13 @@ const db = require('../config/db');
 const auth = require('../middlewares/auth');
 const isAdmin = require('../middlewares/isAdmin');
 const { v4: uuidv4 } = require('uuid');
+// At the top of routes/orders.js
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+// Assuming s3Client is configured similarly to fileRoutes.js
+// It might be better to configure S3Client once in a shared lib/config file and import it
+const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 
 // --- Specific GET routes FIRST ---
 // GET ALL orders (Admin Only)
@@ -424,4 +431,92 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
     }
 });
 
+// Add this route handler inside /var/projects/backend-api/routes/orders.js
+
+// Add this inside /var/projects/backend-api/routes/orders.js
+
+// GET /:orderId/products/:productId/download-link - Generate temporary download link
+router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req, res) => {
+    const requestStartTime = new Date().toISOString();
+    const { orderId, productId: productIdParam } = req.params; // orderId is TEXT, productIdParam is String
+    const customerId = req.user?.customerId; // TEXT customer ID from JWT
+    const userIdForLogs = req.user?.userId; // For logging
+
+    logger.info({ orderId, productId: productIdParam, customerId, userId: userIdForLogs }, `[${requestStartTime}] [GET /download-link] Request received.`);
+
+    // Validate inputs
+    const productId = parseInt(productIdParam, 10); // Convert product ID to integer for product table query
+    if (!customerId) {
+        logger.warn(`[${requestStartTime}] Missing customerId in JWT for user ${userIdForLogs}.`);
+        return res.status(401).json({ message: 'Customer identifier missing.' });
+    }
+    if (!orderId || !productId || isNaN(productId) || productId <= 0) {
+        logger.warn(`[${requestStartTime}] Invalid parameters received. OrderID: ${orderId}, ProductID: ${productIdParam}`);
+        return res.status(400).json({ message: 'Invalid order or product ID specified.' });
+    }
+    if (!BUCKET_NAME) {
+         logger.error(`[${requestStartTime}] S3_BUCKET_NAME env var not set.`);
+         return res.status(500).json({ message: 'Server configuration error: Storage details missing.' });
+    }
+
+    try {
+        // 1. Verify Purchase Ownership and Status
+        logger.debug(`Verifying purchase: Customer ${customerId}, Order ${orderId}, Product ${productId}`);
+        const verificationQuery = `
+            SELECT 1
+            FROM "order" o
+            JOIN order_item oi ON oi.order_id = o.id -- Join on text IDs
+            JOIN order_line_item oli ON oli.id = oi.item_id
+            WHERE
+              o.id = $1            -- orderId (param is TEXT, matches column)
+              AND o.customer_id = $2 -- customerId (param is TEXT from JWT, matches column)
+              AND o.status = 'paid'  -- Check status
+              AND oli.product_id = $3::text -- productId (param is INT, cast to TEXT for comparison with oli.product_id)
+            LIMIT 1;
+        `;
+        const verificationResult = await db.query(verificationQuery, [orderId, customerId, productId]);
+
+        if (verificationResult.rows.length === 0) {
+            logger.warn(`[${requestStartTime}] Verification failed for Customer ${customerId}, Order ${orderId}, Product ${productId}. Purchase not found, not paid, or product not in order.`);
+            // Use 403 Forbidden as the user is authenticated but doesn't have rights to this specific download
+            return res.status(403).json({ message: 'Access denied. Valid purchase for this item not found.' });
+        }
+        logger.info(`[${requestStartTime}] Purchase verified successfully.`);
+
+        // 2. Get Product S3 Key from 'products' table
+        logger.debug(`Workspaceing S3 key for product ID ${productId}`);
+        // Use integer productId here to query the products table
+        const productQuery = 'SELECT s3_file_key, is_digital FROM products WHERE id = $1';
+        const productResult = await db.query(productQuery, [productId]);
+
+        if (productResult.rows.length === 0 || !productResult.rows[0].is_digital || !productResult.rows[0].s3_file_key) {
+            logger.warn(`[${requestStartTime}] Product ${productId} not found, not digital, or missing S3 key.`);
+            return res.status(404).json({ message: 'Product not found or is not available for download.' });
+        }
+        const s3FileKey = productResult.rows[0].s3_file_key;
+        logger.info(`[${requestStartTime}] Found S3 key: ${s3FileKey}`);
+
+        // 3. Generate Pre-signed URL for GetObject
+        const command = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: s3FileKey,
+            // Optional: Force download with a specific filename for the user
+            // ResponseContentDisposition: `attachment; filename="downloaded_filename.pdf"`
+        });
+
+        const expiresIn = 300; // URL valid for 300 seconds (5 minutes)
+        logger.info(`[${requestStartTime}] Generating pre-signed URL for key ${s3FileKey} (expires in ${expiresIn}s)`);
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+        logger.info(`[${requestStartTime}] Pre-signed URL generated successfully.`);
+
+        // 4. Return the URL
+        res.status(200).json({ downloadUrl: signedUrl });
+
+    } catch (error) {
+        logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
+        res.status(500).json({ message: 'Server error generating download link.' });
+    }
+});
+
 module.exports = router;
+

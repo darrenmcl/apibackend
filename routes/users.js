@@ -9,9 +9,7 @@ const db = require('../config/db'); // Import your DB connection pool
 const { v4: uuidv4 } = require('uuid');
 const auth = require('../middlewares/auth');
 const logger = require('../lib/logger');
-// /var/projects/backend-api/routes/users.js
-
-// ... (keep existing requires: express, router, bcrypt, jwt, db) ...
+const { getCookieConfig } = require('../config/cookie-config');
 
 // --- Database Helper Functions ---
 // findUserByEmail needs to return role as well now
@@ -78,16 +76,9 @@ router.post('/login', async (req, res) => {
 
     console.log(`[Login] Token generated for ${user.email} | role: ${user.role} | customer: ${customerId}`);
 
-    // ✅ 5. Set the HttpOnly cookie
-    // In backend /var/projects/backend-api/routes/users.js -> POST /login
-    res.cookie('auth_token', token, {
-    httpOnly: true,
-    secure: true,              // Keep true for HTTPS and SameSite=None
-    sameSite: 'None',          // Keep as None for cross-subdomain fetch
-    path: '/',
-    maxAge: 60 * 60 * 1000,    // 1 hour
-    domain: '.performancecorporate.com' // <<< ADD THIS (Leading Dot is important!)
-    });
+    // ✅ 5. Set the HttpOnly cookie using environment-aware config
+    res.cookie('auth_token', token, getCookieConfig());
+
     // 6. Send response with user info (token not included since it's in the cookie)
     res.json({
       user: {
@@ -104,7 +95,6 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ message: 'Server error during login.' });
   }
 });
-
 
 // GET /profile - Get current user's profile info
 router.get('/profile', auth, async (req, res) => {
@@ -158,26 +148,21 @@ router.get('/profile', auth, async (req, res) => {
     }
 });
 
-// Corrected POST /logout in routes/users.js
+// POST /logout - Logout user and clear cookie
 router.post('/logout', (req, res) => {
-  const requestStartTime = new Date().toISOString(); // Optional: Use logger
-  logger.info(`[${requestStartTime}] [POST /logout] Request received.`);
   try {
-    logger.info(`[${requestStartTime}] [POST /logout] Clearing cookie 'auth_token'...`);
-    res.clearCookie('auth_token', {
-      httpOnly: true,
-      secure: true,                // Keep true (matches setting)
-      sameSite: 'None',          // <<< MATCH the setting used in POST /login (use 'Lax' if login uses 'Lax')
-      path: '/',                  // MUST match setting
-      domain: '.performancecorporate.com' // <<< MATCH the setting used in POST /login (leading dot)
-    });
+    logger.info(`[POST /logout] Clearing cookie 'auth_token'...`);
+    
+    // Use the same config for clearing cookies
+    res.clearCookie('auth_token', getCookieConfig({ maxAge: 0 }));
 
-    logger.info(`[${requestStartTime}] [POST /logout] Cookie clear instruction sent.`);
+    logger.info(`[POST /logout] Cookie clear instruction sent.`);
     res.status(200).json({ message: 'Logout successful' });
   } catch (error) {
-    logger.error({ err: error }, `[${requestStartTime}] [POST /logout] Error clearing cookie`);
+    logger.error({ err: error }, `[POST /logout] Error clearing cookie`);
     res.status(500).json({ message: 'Server error during logout.' });
   }
 });
+
 // --- Keep module.exports ---
 module.exports = router;
