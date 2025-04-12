@@ -18,7 +18,11 @@ function auth(req, res, next) {
         token = req.cookies.auth_token;
         logger.info('[Auth Middleware] Token found in cookie.');
     } else {
-         logger.warn('[Auth Middleware] Token NOT found in cookie.'); // Use logger.warn
+ const authHeader = req.header('Authorization');
+    // ---> ADD THIS LOG <---
+    logger.debug(`[Auth Middleware] Checking Authorization header. Value: [${authHeader}]`);
+    // ---> END LOG <---      
+   logger.warn('[Auth Middleware] Token NOT found in cookie.'); // Use logger.warn
     }
 
     // ... (Fallback header check logic if you kept it) ...
