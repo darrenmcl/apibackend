@@ -354,34 +354,77 @@ router.post('/', auth, async (req, res) => {
 }); // End POST /orders
 
 // PUT update an existing order (Admin Only)
-router.put('/:id', auth, isAdmin, async (req, res) => {
+// Replace the existing router.put('/:id', ...) handler in routes/orders.js
+
+// PUT update an existing order status (e.g., after payment confirmation) - Owner only
+// NOTE: Removed isAdmin, now only requires user to be logged in (auth)
+
+// Replace the existing GET /:orderId/products/:productId/download-link handler in routes/orders.js
+
+router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req, res) => {
+    const requestStartTime = new Date().toISOString();
+    const { orderId, productId: productIdParam } = req.params; // orderId is TEXT, productIdParam is String
+    const customerId = req.user?.customerId; // TEXT customer ID from JWT
+    const userIdForLogs = req.user?.userId; // For logging
+
+    logger.info({ orderId, productId: productIdParam, customerId, userId: userIdForLogs }, `[${requestStartTime}] [GET /download-link] Request received.`);
+
+    // Validate inputs
+    const productId = parseInt(productIdParam, 10); // Convert product ID to integer
+    if (!customerId || !orderId || !productId || isNaN(productId) || productId <= 0) {
+        logger.warn(`[${requestStartTime}] Invalid parameters received. OrderID: ${orderId}, ProductID: ${productIdParam}, CustomerID: ${customerId}`);
+        return res.status(400).json({ message: 'Invalid order or product ID specified.' });
+    }
+    if (!BUCKET_NAME) { // Ensure BUCKET_NAME is available (defined near top of file)
+         logger.error(`[${requestStartTime}] S3_BUCKET_NAME env var not set.`);
+         return res.status(500).json({ message: 'Server configuration error: Storage details missing.' });
+    }
+
     try {
-        const { id } = req.params;
-        const { total, status } = req.body;
+        // 1. Verify Purchase, Ownership, Status, Digital Product, and Get S3 Key in ONE query
+        logger.debug(`Verifying purchase & fetching S3 key: Customer ${customerId}, Order ${orderId}, Product ${productId}`);
+        const verificationQuery = `
+            SELECT p.s3_file_key
+            FROM "order" o
+            JOIN order_item oi ON oi.order_id = o.id             -- Text = Text
+            JOIN order_line_item oli ON oli.id = oi.item_id        -- Text = Text
+            JOIN products p ON oli.product_id::integer = p.id -- Text (cast) = Integer
+            WHERE
+              o.id = $1            -- orderId (TEXT)
+              AND o.customer_id = $2 -- customerId (TEXT from JWT)
+              AND o.status = 'paid'  -- Check status
+              AND p.id = $3            -- productId (INT matches products.id INT)
+              AND p.is_digital = true  -- Ensure product is digital
+              AND p.s3_file_key IS NOT NULL AND p.s3_file_key != '' -- Ensure key exists
+            LIMIT 1;
+        `;
+        const verificationResult = await db.query(verificationQuery, [orderId, customerId, productId]);
 
-        if (total === undefined || status === undefined) {
-            return res.status(400).json({ message: 'Total and status are required for update.' });
+        if (verificationResult.rows.length === 0) {
+            // Could fail due to ownership, status, product not in order, product not digital, or missing key
+            logger.warn(`[${requestStartTime}] Verification failed for Customer ${customerId}, Order ${orderId}, Product ${productId}. Check ownership, order status='paid', product inclusion, is_digital=true, and s3_file_key presence.`);
+            return res.status(403).json({ message: 'Access denied. Valid, downloadable purchase for this item not found.' });
         }
-        const numericTotal = Number(total);
-        if (isNaN(numericTotal) || numericTotal < 0) {
-            return res.status(400).json({ message: 'Total must be a non-negative number.' });
-        }
 
-        const result = await db.query(
-            'UPDATE "order" SET total = $1, status = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
-            [numericTotal, status, id]
-        );
+        const s3FileKey = verificationResult.rows[0].s3_file_key;
+        logger.info(`[${requestStartTime}] Purchase verified successfully. Found S3 key: ${s3FileKey}`);
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Order not found.' });
-        }
+        // 2. Generate Pre-signed URL
+        const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3FileKey });
+        const expiresIn = 300; // 5 minutes
+        logger.info(`[${requestStartTime}] Generating pre-signed URL for key ${s3FileKey} (expires in ${expiresIn}s)`);
+        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+        logger.info(`[${requestStartTime}] Pre-signed URL generated successfully.`);
 
-        res.status(200).json({ message: 'Order updated successfully.', order: result.rows[0] });
+        // 3. Return the URL
+        res.status(200).json({ downloadUrl: signedUrl });
+
     } catch (error) {
-        console.error('Error updating order:', error);
-        res.status(500).json({ message: 'Server error updating order.' });
+        logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
+        res.status(500).json({ message: 'Server error generating download link.' });
     }
 });
+
 
 // DELETE an order (Admin Only)
 router.delete('/:id', auth, isAdmin, async (req, res) => {
