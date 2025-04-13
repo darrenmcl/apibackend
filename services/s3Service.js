@@ -3,6 +3,8 @@ const { S3Client } = require("@aws-sdk/client-s3");
 const { Upload } = require("@aws-sdk/lib-storage");
 const dotenv = require('dotenv');
 const logger = require('../lib/logger');
+const { GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
 // Load environment variables
 dotenv.config();
@@ -71,6 +73,35 @@ async function uploadFileToS3(fileBuffer, key, contentType) {
   }
 }
 
+/**
+ * Generate a presigned download URL for an S3 object
+ * @param {string} key - The S3 object key (e.g., "digital-products/product1.pdf")
+ * @param {number} expiresIn - Expiration time in seconds (default 300s = 5min)
+ * @returns {Promise<string>} - The presigned download URL
+ */
+async function getPresignedDownloadUrl(key, expiresIn = 300) {
+  try {
+    if (!key) throw new Error("Key is required for download URL generation.");
+    if (!BUCKET_NAME) throw new Error("S3_BUCKET_NAME not set.");
+
+    logger.info({ key, expiresIn }, "Generating presigned S3 download URL");
+
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+
+    logger.info({ key, signedUrl }, "Presigned download URL generated successfully");
+    return signedUrl;
+  } catch (error) {
+    logger.error({ err: error, key }, "Error generating presigned S3 download URL");
+    throw error;
+  }
+}
+
 module.exports = {
-  uploadFileToS3
+  uploadFileToS3,
+  getPresignedDownloadUrl,
 };

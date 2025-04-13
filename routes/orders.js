@@ -7,11 +7,14 @@ const { v4: uuidv4 } = require('uuid');
 // At the top of routes/orders.js
 const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const { getPresignedDownloadUrl } = require('../services/s3Service');
 // Assuming s3Client is configured similarly to fileRoutes.js
 // It might be better to configure S3Client once in a shared lib/config file and import it
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
 const BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const logger = require('../lib/logger');
+
+const expiresIn = 300; // 5 minutes
 
 // --- Specific GET routes FIRST ---
 // GET ALL orders (Admin Only)
@@ -462,18 +465,16 @@ router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req
         logger.info(`[${requestStartTime}] Purchase verified successfully. Found S3 key: ${s3FileKey}`);
 
         // 2. Generate Pre-signed URL
-        const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: s3FileKey });
-        const expiresIn = 300; // 5 minutes
+        const signedUrl = await getPresignedDownloadUrl(s3FileKey, 300); // 5 minutes
         logger.info(`[${requestStartTime}] Generating pre-signed URL for key ${s3FileKey} (expires in ${expiresIn}s)`);
-        const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
         logger.info(`[${requestStartTime}] Pre-signed URL generated successfully.`);
 
         // 3. Return the URL
         res.status(200).json({ downloadUrl: signedUrl });
 
-    } catch (error) {
-        logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
-        res.status(500).json({ message: 'Server error generating download link.' });
+} catch (error) {
+    logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
+    res.status(500).json({ message: 'Server error generating download link.' });
     }
 });
 

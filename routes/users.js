@@ -21,8 +21,18 @@ const findUserByEmail = async (email) => {
   } catch (err) { /* ... */ throw err; }
 };
 
-// createUser needs role='user' (already added conceptually before)
-const createUser = async (userData) => { /* ... keep revised version ... */ };
+const createUser = async ({ email, password, name, role = 'user' }) => {
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const query = `
+    INSERT INTO users (email, password, name, role, created_at)
+    VALUES ($1, $2, $3, $4, NOW())
+    RETURNING id, email, name, role
+  `;
+  const values = [email, hashedPassword, name, role];
+  const result = await db.query(query, values);
+  return result.rows[0];
+};
+
 
 // --- REVISED Login Route ---
 router.post('/login', async (req, res) => {
@@ -232,6 +242,67 @@ router.get('/check-cookies', (req, res) => {
     hasAuthToken: !!req.cookies.auth_token
   });
 });
+
+// --- REGISTER ROUTE ---
+// POST /register - Register a new user
+router.post('/register', async (req, res) => {
+  const customerId = uuidv4(); // generate UUID manually
+  const timestamp = new Date().toISOString();
+  const { name, email, password } = req.body;
+  logger.info({ email }, `[${timestamp}] [POST /register] Attempting user registration.`);
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ message: 'Name, email, and password are required.' });
+  }
+
+  try {
+    // 1. Check if user already exists
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ message: 'User already exists with this email.' });
+    }
+
+    // 2. Create user (this calls your createUser function!)
+    const newUser = await createUser({ email, password, name });
+    const customerId = uuidv4();
+    // 3. Optionally: create a customer record linked to this email
+    const customerResult = await db.query(
+     `INSERT INTO customer (id, email, has_account, created_at, updated_at)
+      VALUES ($1, $2, true, NOW(), NOW())`,
+      [customerId, email]
+    );
+    const customerId = customerResult.rows[0].id;
+
+    // 4. Create JWT token
+    const payload = {
+      userId: newUser.id,         // INTEGER
+      customerId,                 // UUID
+      email: newUser.email,
+      role: newUser.role
+    };
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    // 5. Set HttpOnly cookie
+    res.cookie('auth_token', token, getCookieConfig());
+
+    // 6. Return success response
+    res.status(201).json({
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        customerId,
+        token
+      }
+    });
+
+  } catch (error) {
+    logger.error({ err: error }, `[${timestamp}] Error during registration.`);
+    res.status(500).json({ message: 'Server error during registration.' });
+  }
+});
+
 
 // --- Keep module.exports ---
 module.exports = router;
