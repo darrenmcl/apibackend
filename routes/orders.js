@@ -95,63 +95,115 @@ router.get('/recent', auth, isAdmin, async (req, res) => {
 // Replace the existing GET /:id route handler with this one
 
 // GET /:id - Get a single order by ID (Owner or Admin only)
-router.get('/:id', auth, async (req, res) => {
+// Replace the existing router.get('/:id', ...) handler in routes/orders.js
+
+// GET /:id - Get full details for a single order (Owner or Admin only)
+
+// Replace the existing router.get('/:id', ...) handler in routes/orders.js
+
+// GET /:id - Get full details for a single order (Owner or Admin only)
+router.get('/:id', auth, async (req, res) => { // ID might contain 'order_' prefix
+    const requestStartTime = new Date().toISOString();
+    const orderId = req.params.id; // TEXT order ID from the URL (e.g., 'order_...')
+    const tokenCustomerId = req.user?.customerId; // TEXT customer ID from JWT payload
+    const userRole = req.user?.role; // Role from JWT payload
+    const userIdForLogs = req.user?.userId; // User ID for logging
+
+    // Use logger (ensure it's required/imported at the top of the file)
+    const logger = require('../lib/logger');
+    logger.info({ orderId, customerId: tokenCustomerId, userId: userIdForLogs, role: userRole }, `[${requestStartTime}] [GET /orders/:id] Request received.`);
+
+    if (!tokenCustomerId) {
+        logger.warn(`[${requestStartTime}] [GET /orders/:id] User ${userIdForLogs} missing customerId in token!`);
+        return res.status(401).json({ message: 'Customer identifier missing.' });
+    }
+     if (!orderId) {
+         logger.warn(`[${requestStartTime}] [GET /orders/:id] Missing order ID in request path.`);
+         return res.status(400).json({ message: 'Invalid order ID.' });
+     }
+
     try {
-        const orderId = req.params.id; // The TEXT order ID from the URL
-        const tokenCustomerId = req.user?.customerId; // TEXT customer ID from JWT payload
-        const userRole = req.user?.role;        // Role from JWT payload
-        const userIdForLogs = req.user?.userId; // User ID for logging
+        // 1. Fetch the main order record & Verify Ownership/Admin
+        logger.debug(`Workspaceing main order record for ID: ${orderId}`);
+        // Select desired fields from "order" table
+        const orderQueryText = `SELECT id, customer_id, status, email, currency_code, created_at, updated_at, paid_at FROM "order" WHERE id = $1`;
+        const orderResult = await db.query(orderQueryText, [orderId]);
 
-        // Ensure customerId exists in token (should be guaranteed by login fix)
-        if (!tokenCustomerId) {
-            console.error(`[GET /orders/:id] User ${userIdForLogs} missing customerId in token!`);
-            return res.status(401).json({message: 'Customer ID not found in token.'});
-        }
-
-        // Fetch the order from the database
-        // *** Verify your table name ("order") and ID column name ('id') ***
-        const queryText = `SELECT * FROM "order" WHERE id = $1`;
-        const result = await db.query(queryText, [orderId]);
-
-        if (result.rows.length === 0) {
-            console.log(`[GET /orders/:id] Order not found for ID: ${orderId}`);
+        if (orderResult.rows.length === 0) {
+            logger.warn(`[${requestStartTime}] [GET /orders/:id] Order not found in DB for ID: ${orderId}`);
             return res.status(404).json({ message: 'Order not found.' });
         }
 
-        const order = result.rows[0];
-        // Get the customer ID stored WITH the order record
-        // *** CRITICAL: Verify 'customer_id' is the EXACT column name in your "order" table ***
+        const order = orderResult.rows[0];
         const orderCustomerId = order.customer_id;
 
-        // --- Detailed Log for Comparison ---
-        console.log(`[Auth Check /orders/:id] Comparing Order's CustomerID (DB): "${orderCustomerId}" (Type: ${typeof orderCustomerId})`);
-        console.log(`[Auth Check /orders/:id] with Token's CustomerID (JWT): "${tokenCustomerId}" (Type: ${typeof tokenCustomerId})`);
-        console.log(`[Auth Check /orders/:id] User Role: "${userRole}"`);
-        // --- End Log ---
-
-        // --- Corrected Authorization Check ---
-        // Check if the user is an admin OR if the customer IDs match (after trimming just in case)
-        const isOwner = (typeof orderCustomerId === 'string' && typeof tokenCustomerId === 'string' && orderCustomerId.trim() === tokenCustomerId.trim());
+        logger.debug(`[Auth Check /orders/:id] Comparing Order's CustomerID: "${orderCustomerId}" with Token's CustomerID: "${tokenCustomerId}". Role: "${userRole}"`);
+        const isOwner = (orderCustomerId && tokenCustomerId && orderCustomerId === tokenCustomerId);
         const isAdminUser = (userRole === 'admin');
 
         if (!isOwner && !isAdminUser) {
-             // Deny access if they are NOT the owner AND they are NOT an admin
-             console.log(`[GET /orders/:id] Forbidden Access: Not owner and not admin.`);
-             return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
+            logger.warn({ orderId, reqUser: userIdForLogs, reqCust: tokenCustomerId, orderCust: orderCustomerId }, `[${requestStartTime}] [GET /orders/:id] Forbidden Access.`);
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
         }
-        // --- End Corrected Check ---
+        logger.info(`[${requestStartTime}] [GET /orders/:id] Access granted for Order ${order.id}.`);
 
-        // If we reach here, access is granted
-        console.log(`[GET /orders/:id] Access granted for Order ${order.id} to Customer ${tokenCustomerId} (Role: ${userRole})`);
-        // Remember this only returns order header data currently
-        res.status(200).json(order);
+        // 2. Fetch Line Items JOINING Product Details (If Authorized)
+        logger.debug(`Workspaceing line items for Order ID: ${orderId}`);
+        const itemsQueryText = `
+            SELECT
+                oi.id as order_item_id,
+                oi.quantity,
+                oli.id as line_item_id,
+                oli.title as line_item_title, -- Title stored at time of order
+                oli.thumbnail as line_item_thumbnail,
+                oli.unit_price as line_item_unit_price,
+                oli.product_id, -- Text product ID from line item
+                p.id as product_table_id, -- Integer product ID from products table
+                p.name as product_name,   -- Current product name
+                p.slug as product_slug,
+                p.is_digital,             -- <<< Needed for download button
+                p.s3_file_key             -- <<< Needed for download button
+            FROM order_item oi
+            JOIN order_line_item oli ON oli.id = oi.item_id
+            LEFT JOIN products p ON oli.product_id::integer = p.id -- CAST text product_id to INT for join
+            WHERE oi.order_id = $1                                -- Filter by the correct order ID
+            ORDER BY oli.created_at ASC;                          -- Example ordering
+        `;
+        const itemsResult = await db.query(itemsQueryText, [orderId]);
+
+        // Map results to a clean structure
+        const lineItems = itemsResult.rows.map(item => ({
+            order_item_id: item.order_item_id,
+            quantity: parseInt(item.quantity, 10),
+            title: item.line_item_title || item.product_name || 'Item Not Found',
+            thumbnail: item.line_item_thumbnail,
+            unit_price: parseFloat(item.unit_price),
+            product: item.product_table_id ? { // Check if join succeeded
+                id: item.product_table_id,
+                slug: item.product_slug,
+                is_digital: item.is_digital ?? false,
+                s3_file_key: item.s3_file_key
+            } : null // Set product to null if product deleted
+        }));
+        logger.info(`[${requestStartTime}] [GET /orders/:id] Fetched ${lineItems.length} line items for Order ${order.id}.`);
+
+        // 3. Combine order header and line items
+        const fullOrderDetails = {
+            ...order, // Spread the main order columns
+            items: lineItems // Add the processed line items array
+        };
+
+        // 4. Return Combined Data
+        res.status(200).json(fullOrderDetails);
 
     } catch (error) {
-        console.error(`[GET /orders/:id] Error fetching order ${req.params.id}:`, error);
-        res.status(500).json({ message: 'Server error fetching order.'});
+        logger.error({ err: error, orderId, customerId: tokenCustomerId }, `[${requestStartTime}] [GET /orders/:id] Error fetching order details`);
+        res.status(500).json({ message: 'Server error fetching order details.' });
     }
 });
 
+// --- Keep other routes (GET /, GET /my-orders, GET /recent, POST /, DELETE /:id, and download link) ---
+// --- Keep module.exports = router; at the end ---
 // --- Other methods ---
 // POST create a new order
 // Replace the existing router.post('/', ...) handler in routes/orders.js with this:
