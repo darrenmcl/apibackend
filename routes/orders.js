@@ -408,6 +408,58 @@ router.post('/', auth, async (req, res) => {
     }
 }); // End POST /orders
 
+// PUT /orders/:id - Update order status directly
+router.put('/:id', auth, async (req, res) => {
+  const orderId = req.params.id;
+  const { status, paymentIntentId } = req.body;
+  const userId = req.user?.userId;
+
+  console.log(`[PUT /orders/${orderId}] User ${userId} updating order to "${status}"`);
+
+  if (!orderId || !status) {
+    return res.status(400).json({ success: false, message: 'Order ID and status are required.' });
+  }
+
+  try {
+    const orderResult = await db.query('SELECT * FROM "order" WHERE id = $1', [orderId]);
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const paidAtSQL = status === 'paid' ? 'NOW()' : 'NULL';
+    const updateQuery = `
+      UPDATE "order"
+      SET 
+        status = $1,
+        payment_intent_id = $2,
+        paid_at = ${paidAtSQL},
+        updated_at = NOW()
+      WHERE id = $3
+      RETURNING id, status, paid_at
+    `;
+    const result = await db.query(updateQuery, [status, paymentIntentId || null, orderId]);
+
+    res.status(200).json({
+      success: true,
+      order: {
+        id: result.rows[0].id,
+        status: result.rows[0].status,
+        paidAt: result.rows[0].paid_at
+      }
+    });
+
+  } catch (err) {
+    console.error(`[PUT /orders/${orderId}] Error:`, err);
+    res.status(500).json({
+      success: false,
+      message: 'Server error updating order',
+      error: err.message
+    });
+  }
+});
+
+
+
 // PUT update an existing order (Admin Only)
 // Replace the existing router.put('/:id', ...) handler in routes/orders.js
 
@@ -578,6 +630,86 @@ router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req
     } catch (error) {
         logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
         res.status(500).json({ message: 'Server error generating download link.' });
+    }
+});
+
+// Add this route handler to /var/projects/backend-api/routes/orders.js
+
+// POST /api/orders/update-status - Update order status (called by client during checkout)
+router.post('/update-status', auth, async (req, res) => {
+    const { orderId, status, paymentIntentId } = req.body;
+    const userIdForLogs = req.user?.userId;
+
+    console.log(`[POST /orders/update-status] Attempting to update order ${orderId} to status "${status}" with paymentIntentId "${paymentIntentId}"`);
+
+    // Validate required fields
+    if (!orderId) {
+        return res.status(400).json({ success: false, message: 'Order ID is required' });
+    }
+
+    if (!status) {
+        return res.status(400).json({ success: false, message: 'Status is required' });
+    }
+
+    try {
+        // Get the existing order to check if it exists and ownership
+        const orderQuery = 'SELECT * FROM "order" WHERE id = $1';
+        const orderResult = await db.query(orderQuery, [orderId]);
+
+        if (orderResult.rows.length === 0) {
+            console.error(`[POST /orders/update-status] Order not found: ${orderId}`);
+            return res.status(404).json({ success: false, message: 'Order not found' });
+        }
+
+        const order = orderResult.rows[0];
+        
+        // For paid status, require a paymentIntentId
+        if (status === 'paid' && !paymentIntentId) {
+            console.error(`[POST /orders/update-status] Payment Intent ID missing for paid status update`);
+            return res.status(400).json({ success: false, message: 'Payment Intent ID is required for paid status' });
+        }
+
+        // Update the order status
+        const paidAt = status === 'paid' ? 'NOW()' : null;
+        const updateQuery = `
+            UPDATE "order"
+            SET 
+                status = $1,
+                payment_intent_id = $2,
+                paid_at = ${paidAt},
+                updated_at = NOW()
+            WHERE id = $3
+            RETURNING id, status, paid_at
+        `;
+
+        const updateParams = [status, paymentIntentId, orderId];
+        const updateResult = await db.query(updateQuery, updateParams);
+
+        if (updateResult.rows.length === 0) {
+            console.error(`[POST /orders/update-status] Failed to update order ${orderId}`);
+            return res.status(500).json({ success: false, message: 'Failed to update order status' });
+        }
+
+        const updatedOrder = updateResult.rows[0];
+        console.log(`[POST /orders/update-status] Successfully updated order ${orderId} to status "${status}"`);
+
+        // Response with success
+        res.status(200).json({
+            success: true,
+            order: {
+                id: updatedOrder.id,
+                status: updatedOrder.status,
+                paidAt: updatedOrder.paid_at
+            }
+        });
+
+    } catch (error) {
+        console.error(`[POST /orders/update-status] Error updating order status:`, error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error updating order status',
+            error: error.message
+        });
     }
 });
 

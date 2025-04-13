@@ -245,8 +245,8 @@ router.get('/check-cookies', (req, res) => {
 
 // --- REGISTER ROUTE ---
 // POST /register - Register a new user
+// POST /register - Register a new user
 router.post('/register', async (req, res) => {
-  const customerId = uuidv4(); // generate UUID manually
   const timestamp = new Date().toISOString();
   const { name, email, password } = req.body;
   logger.info({ email }, `[${timestamp}] [POST /register] Attempting user registration.`);
@@ -264,19 +264,19 @@ router.post('/register', async (req, res) => {
 
     // 2. Create user (this calls your createUser function!)
     const newUser = await createUser({ email, password, name });
+
+    // ✅ 3. Generate and insert customer record
     const customerId = uuidv4();
-    // 3. Optionally: create a customer record linked to this email
-    const customerResult = await db.query(
-     `INSERT INTO customer (id, email, has_account, created_at, updated_at)
-      VALUES ($1, $2, true, NOW(), NOW())`,
+    await db.query(
+      `INSERT INTO customer (id, email, has_account, created_at, updated_at)
+       VALUES ($1, $2, true, NOW(), NOW())`,
       [customerId, email]
     );
-    const customerId = customerResult.rows[0].id;
 
     // 4. Create JWT token
     const payload = {
-      userId: newUser.id,         // INTEGER
-      customerId,                 // UUID
+      userId: newUser.id,
+      customerId,
       email: newUser.email,
       role: newUser.role
     };
