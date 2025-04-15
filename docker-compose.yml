@@ -104,20 +104,20 @@ services:
     command: node email/emailConsumer.js # Path from project root
 
   # --- LLM Report Worker (NEW) ---
-llm-report-worker:
-  build:
-    context: ./llm-report-worker
-    dockerfile: Dockerfile
-  container_name: llm-report-worker
-  env_file:
-    - ./llm-report-worker/.env
-  volumes:
-    - ./llm-report-worker:/usr/src/app
-    - /usr/src/app/node_modules
-  depends_on:
-    rabbitmq:
-      condition: service_healthy
-  restart: unless-stopped
+  llm-report-worker:
+    build:
+      context: ./llm-report-worker
+      dockerfile: Dockerfile
+    container_name: llm-report-worker
+    env_file:
+      - ./llm-report-worker/.env
+    volumes:
+      - ./llm-report-worker:/usr/src/app
+      - /usr/src/app/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
 
 # --- Named Volumes ---
 volumes:
