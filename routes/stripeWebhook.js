@@ -32,7 +32,6 @@ module.exports = async (req, res) => {
         }
     });
 
-    /* NORMAL PROCESSING DISABLED FOR TESTING
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     if (!webhookSecret) {
         logger.error("[Stripe Webhook] FATAL: STRIPE_WEBHOOK_SECRET env var not set!");
@@ -71,5 +70,5 @@ module.exports = async (req, res) => {
 
     // Rest of your webhook processing code...
     res.status(200).json({ received: true });
-    */
+
 };
