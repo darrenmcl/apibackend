@@ -41,20 +41,8 @@ app.use(morgan('dev'));
 // 2. Stripe Webhook Route - MUST come BEFORE express.json()
 // Use express.raw() to get the raw body buffer for Stripe signature verification
 // Mount directly, assumes stripeRoutes handles the POST '/' path for this specific mount
-
-app.post('/webhook/stripe', 
-  express.raw({ type: 'application/json', limit: '10mb' }), 
-  (req, res, next) => {
-    // Simple debug logging to see if the body is making it as a Buffer
-    logger.debug({
-      bodyIsBuffer: Buffer.isBuffer(req.body),
-      bodyLength: req.body ? req.body.length : 0,
-      hasSignature: !!req.headers['stripe-signature']
-    }, "Webhook request pre-processing");
-    next();
-  },
-  stripeWebhookHandler
-);
+const stripeWebhook = require('./routes/stripeWebhook');
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), stripeWebhook);
 logger.info('Stripe webhook route configured with raw body parser at POST /webhook/stripe');
 
 // 3. CORS Middleware
