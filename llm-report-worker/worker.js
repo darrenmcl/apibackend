@@ -2,7 +2,7 @@
 
 require('dotenv').config(); // Load environment variables
 const amqp = require('amqplib');
-const logger = require('./lib/logger'); // Your Pino logger setup
+const logger = require('../lib/logger'); // Your Pino logger setup
 const db = require('./config/db'); // Your DB pool setup
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 // const { PDFDocument } = require('pdfkit'); // Example PDF lib

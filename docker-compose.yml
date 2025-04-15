@@ -84,46 +84,40 @@ services:
     # command: node worker.js
 
   # --- Email Consumer ---
-# Updated email-consumer section for docker-compose.yml
-# Updated email-consumer section for docker-compose.yml with shared code access
+  email-consumer:
+    build:
+      context: . # Build from the root directory to include all files
+      dockerfile: ./email/Dockerfile # Use specific Dockerfile in email dir
+    container_name: email-consumer
+    env_file:
+      - ./email/.env  # Use dedicated .env file
+    volumes:
+      # Mount the entire project to ensure access to shared code
+      - .:/usr/src/app
+      # Create an anonymous volume for node_modules
+      - /usr/src/app/node_modules
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    # Specify the correct entry point
+    command: node email/emailConsumer.js # Path from project root
 
-email-consumer:
+  # --- LLM Report Worker (NEW) ---
+llm-report-worker:
   build:
-    context: . # Build from the root directory to include all files
-    dockerfile: ./email/Dockerfile # Use specific Dockerfile in email dir
-  container_name: email-consumer
+    context: ./llm-report-worker
+    dockerfile: Dockerfile
+  container_name: llm-report-worker
   env_file:
-    - ./email/.env  # Use dedicated .env file
+    - ./llm-report-worker/.env
   volumes:
-    # Mount the entire project to ensure access to shared code
-    - .:/usr/src/app
-    # Create an anonymous volume for node_modules
+    - ./llm-report-worker:/usr/src/app
     - /usr/src/app/node_modules
   depends_on:
     rabbitmq:
       condition: service_healthy
   restart: unless-stopped
-  # Specify the correct entry point
-  command: node email/emailConsumer.js # Path from project root
-  # --- LLM Report Worker (NEW) ---
-  llm-report-worker:
-    build:
-      context: ./llm-report-worker # CORRECT: Subdirectory relative to docker-compose.yml
-      dockerfile: Dockerfile # Requires Dockerfile inside ./llm-report-worker
-    container_name: llm-report-worker
-    env_file:
-      - ./llm-report-worker/.env # <<< Requires its own .env file here
-    volumes:
-      # Mount code for development
-      - ./llm-report-worker:/usr/src/app
-      - /usr/src/app/node_modules # Isolate node_modules
-    depends_on:
-      rabbitmq:
-         condition: service_healthy
-      pgvector-db:
-         condition: service_started # Needs DB access
-    restart: unless-stopped
-    command: node worker.js # Specify command to run the worker
 
 # --- Named Volumes ---
 volumes:
