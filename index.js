@@ -23,8 +23,10 @@ const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
-const stripeRoutes = require('./routes/stripe'); // Handles webhook AND other stripe actions
 const categoryRoutes = require('./routes/categories');
+const stripeWebhookHandler = require('./routes/stripeWebhook'); // Create this new file
+const stripeRoutes = require('./routes/stripe'); // Keep regular Stripe routes
+
 // const logRoutes = require('./routes/log.js'); // Removed, use Pino logger
 
 const app = express();
@@ -39,7 +41,20 @@ app.use(morgan('dev'));
 // 2. Stripe Webhook Route - MUST come BEFORE express.json()
 // Use express.raw() to get the raw body buffer for Stripe signature verification
 // Mount directly, assumes stripeRoutes handles the POST '/' path for this specific mount
-app.post('/webhook/stripe', express.raw({ type: 'application/json' }), stripeRoutes);
+
+app.post('/webhook/stripe', 
+  express.raw({ type: 'application/json', limit: '10mb' }), 
+  (req, res, next) => {
+    // Simple debug logging to see if the body is making it as a Buffer
+    logger.debug({
+      bodyIsBuffer: Buffer.isBuffer(req.body),
+      bodyLength: req.body ? req.body.length : 0,
+      hasSignature: !!req.headers['stripe-signature']
+    }, "Webhook request pre-processing");
+    next();
+  },
+  stripeWebhookHandler
+);
 logger.info('Stripe webhook route configured with raw body parser at POST /webhook/stripe');
 
 // 3. CORS Middleware
@@ -67,6 +82,9 @@ const corsOptionsDelegate = function (req, callback) {
     logger.debug({ origin: requestOrigin, allowed: isAllowed }, `[CORS] Decision processed`);
     callback(null, corsOptions);
 };
+
+app.post('/webhook/stripe', express.raw({type: 'application/json'}), stripeWebhookHandler);
+
 app.use(cors(corsOptionsDelegate));
 
 // 4. Cookie Parser (Needed before routes using auth middleware)
@@ -74,8 +92,7 @@ app.use(cookieParser());
 
 // 5. Standard JSON & URL-Encoded Body Parsers (AFTER raw webhook)
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
+app.post('/webhook/stripe', express.raw({type: 'application/json'}), stripeWebhookHandler);
 
 // --- API Routes ---
 // Mount routes WITHOUT the /api prefix
