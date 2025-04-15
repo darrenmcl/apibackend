@@ -87,23 +87,35 @@ router.post('/', auth, isAdmin, async (req, res) => {
 });
 
 // PUT /:id - Update a blog post (Admin Only) - UPDATED FOR SLUG
+// Replace the existing router.put('/:id...', ...) handler in routes/blogPosts.js with this:
+
 router.put('/:id(\\d+)', auth, isAdmin, async (req, res) => {
     const requestStartTime = new Date().toISOString();
     const postId = parseInt(req.params.id, 10);
+    // Assume logger and generateUniqueBlogSlug helper are defined/required
     logger.info(`[${requestStartTime}] [PUT /blogposts/:id] Admin request received for ID: ${postId}`);
 
-    if (isNaN(postId)) return res.status(400).json({ message: 'Invalid Post ID format' });
+    if (isNaN(postId)) {
+        logger.warn(`[${requestStartTime}] Invalid Post ID format for PUT: ${req.params.id}`);
+        return res.status(400).json({ message: 'Invalid Post ID format' });
+    }
 
     try {
-        const { title, content, published } = req.body;
+        // ---> Get ALL expected fields from body <---
+        const { title, content, published, image } = req.body; // Added 'image'
+
+        // Validate required fields (adjust if partial updates ARE allowed)
+        // For now, assume admin form sends all fields for simplicity on PUT
         if (title === undefined || content === undefined || published === undefined) {
-            return res.status(400).json({ message: 'Title, content, and published status are required.' });
+             logger.warn(`[${requestStartTime}] Missing required fields for update on post ${postId}`);
+             return res.status(400).json({ message: 'Title, content, and published status are required.' });
         }
         if (typeof published !== 'boolean') {
+             logger.warn(`[${requestStartTime}] Invalid 'published' type for update on post ${postId}: ${published}`);
              return res.status(400).json({ message: 'Published must be true or false.' });
         }
 
-        // Check if post exists and get original title for slug check
+        // Check if post exists and get original title for slug comparison
         const checkResult = await pool.query('SELECT id, title FROM blog_posts WHERE id = $1', [postId]);
         if (checkResult.rows.length === 0) {
             logger.warn(`[${requestStartTime}] [PUT /blogposts/:id] Blog post not found for ID: ${postId}`);
@@ -111,41 +123,73 @@ router.put('/:id(\\d+)', auth, isAdmin, async (req, res) => {
         }
         const originalTitle = checkResult.rows[0].title;
 
+        // --- Build dynamic UPDATE statement ---
         let slug = null;
-        const updateFields = [
-            `title = $1`,
-            `content = $2`,
-            `published = $3`,
-            `"updatedAt" = NOW()`
-        ];
-        const values = [title, content, published];
-        let paramIndex = 4;
+        const updateFields = [];
+        const values = [];
+        let paramIndex = 1;
 
-        // Regenerate slug ONLY if title has changed
-        if (title !== originalTitle) {
-            slug = await generateUniqueBlogSlug(title, postId); // Pass ID to helper
+        // Title (Required for update based on check above)
+        if (typeof title !== 'string' || title.trim() === '') {
+             logger.warn(`[${requestStartTime}] Empty title provided for update on post ${postId}`);
+             return res.status(400).json({ message: 'Title cannot be empty.' });
+        }
+        updateFields.push(`title = $${paramIndex++}`);
+        values.push(title.trim());
+
+        // Content (Required for update)
+        updateFields.push(`content = $${paramIndex++}`);
+        values.push(content); // Allow potentially empty string? Or add validation?
+
+        // Published Status (Required for update)
+        updateFields.push(`published = $${paramIndex++}`);
+        values.push(published);
+
+        // Image (Optional)
+        if (image !== undefined) { // Only update if key exists in request body
+            const imageValue = (typeof image === 'string' && image.trim() !== '') ? image.trim() : null; // Allow empty string or null to clear image
+            updateFields.push(`image = $${paramIndex++}`);
+            values.push(imageValue);
+            logger.info(`[${requestStartTime}] Staging image update to: ${imageValue}`);
+        }
+
+        // Slug (Conditional based on Title change)
+        if (title.trim() !== originalTitle) {
+            slug = await generateUniqueBlogSlug(title.trim(), postId); // Pass ID to helper
             updateFields.push(`slug = $${paramIndex++}`);
             values.push(slug);
             logger.info(`[${requestStartTime}] [PUT /blogposts/:id] Title changed, regenerating slug to: ${slug}`);
         }
 
-        values.push(postId); // ID for WHERE clause
-        const idParamIndex = paramIndex;
+        // Always update 'updatedAt'
+        updateFields.push(`"updatedAt" = NOW()`); // Use quoted name if needed
 
+        // Add ID for WHERE clause LAST
+        values.push(postId);
+        const idParamIndex = paramIndex; // Placeholder index for the ID
+
+        // Construct and Execute Query
         const updateQueryText = `
             UPDATE blog_posts SET ${updateFields.join(', ')}
             WHERE id = $${idParamIndex}
-            RETURNING id, title, slug, published, authorid, "createdAt", "updatedAt"`; // Return updated data
+            RETURNING id, title, slug, content, published, authorid, "createdAt", "updatedAt", image`; // <<< Added image to RETURNING
 
         logger.debug({ query: updateQueryText.replace(/\s+/g, ' '), params: values }, `Executing update for post ID ${postId}`);
         const result = await pool.query(updateQueryText, values);
 
+        // Check if update actually happened (should always return row if ID exists)
+        if (result.rows.length === 0) {
+             logger.error(`[${requestStartTime}] [PUT /blogposts/:id] Update failed unexpectedly for ID ${postId}. ID existed but RETURNING clause was empty.`);
+             // This case shouldn't ideally happen if the initial check passed.
+             return res.status(500).json({ message: 'Update failed unexpectedly.' });
+        }
+
         logger.info({ postId }, `[${requestStartTime}] [PUT /blogposts/:id] Blog post updated successfully.`);
-        res.status(200).json(result.rows[0]);
+        res.status(200).json(result.rows[0]); // Return updated post data including image
 
     } catch (error) {
         logger.error({ err: error, postId }, `[${requestStartTime}] [PUT /blogposts/:id] Error updating blog post`);
-        if (error.code === '23505' && error.constraint === 'blog_posts_slug_unique') {
+        if (error.code === '23505' && error.constraint === 'blog_posts_slug_unique') { // Ensure constraint name is correct
              return res.status(409).json({ message: 'Blog post title results in a slug conflict.' });
         }
         res.status(500).json({ message: 'Error updating blog post', error: error.message });

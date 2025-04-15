@@ -1,143 +1,130 @@
+// /var/projects/backend-api/index.js
+
+// Load env vars FIRST
 const dotenv = require('dotenv');
+dotenv.config();
+
+// Standard Requires
 const express = require('express');
 const cors = require('cors');
-const morgan = require('morgan');
-const { connectRabbit } = require('./lib/rabbit');
-const cookieParser = require('cookie-parser'); // Require the package
-connectRabbit(); // Call once on startup
-dotenv.config(); // Load environment variables
+const morgan = require('morgan'); // For HTTP request logging
+const cookieParser = require('cookie-parser');
+const logger = require('./lib/logger'); // Use Pino logger
+const { connectRabbit } = require('./lib/rabbit'); // Import connectRabbit
 
-const app = express();
-const PORT = process.env.PORT || 3012;
+// Initialize RabbitMQ Connection asynchronously (doesn't block startup)
+connectRabbit().catch(err => logger.error({ err }, "Initial RabbitMQ connection failed"));
 
-// --- Middleware (order matters!) ---
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
-app.use(cookieParser());
-
-// Load comma-separated origins from .env
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
-  : [];
-
-// Add development origins when not in production
-if (process.env.NODE_ENV !== 'production') {
-  allowedOrigins.push('http://localhost:4321'); // Astro default port
-  allowedOrigins.push('http://localhost:3012'); // Common dev port
-}
-
-// For debugging - log the allowed origins
-console.log('[CORS] Allowed origins:', allowedOrigins);
-
-const corsOptionsDelegate = function (req, callback) {
-  const requestOrigin = req.header('Origin');
-  
-  // Check if the origin is in our allowed list or if we should allow all in development
-  let corsOptions;
-  
-  if (!requestOrigin) {
-    // If no origin (like server-to-server requests), allow the request
-    corsOptions = { origin: false };
-  } else if (allowedOrigins.includes(requestOrigin) || allowedOrigins.includes('*')) {
-    // Specific origin is allowed or we allow all origins
-    corsOptions = { 
-      origin: requestOrigin,
-      credentials: true // CRITICAL for cookies
-    };
-  } else {
-    // Not allowed origin
-    console.warn(`[CORS] Rejecting request from origin: ${requestOrigin}`);
-    corsOptions = { origin: false };
-  }
-  
-  // Common options for all requests
-  corsOptions = {
-    ...corsOptions,
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Always allow credentials
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range', 'set-cookie'],
-    maxAge: 86400 // Cache preflight response for 24 hours
-  };
-  
-  // Log CORS decision for debugging
-  console.log(`[CORS] Request from origin: ${requestOrigin} => ${corsOptions.origin ? 'Allowed' : 'Rejected'}`);
-  
-  callback(null, corsOptions);
-};
-
-app.use(cors(corsOptionsDelegate));
-
-// --- PUBLIC ROUTES FIRST (like /chat) ---
+// --- Import Routers ---
 const chatRoutes = require('./routes/chatRoutes');
 const contactRoutes = require('./routes/contactRoutes');
-const logRoutes = require('./routes/log.js');
-app.use('/chat', chatRoutes); // ✅ public chatbot route
-app.use('/contact', contactRoutes);
-
-// --- PROTECTED ROUTES (e.g. behind auth middleware) ---
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
 const fileRoutes = require('./routes/fileRoutes');
-const stripeRoutes = require('./routes/stripe');
+const stripeRoutes = require('./routes/stripe'); // Handles webhook AND other stripe actions
 const categoryRoutes = require('./routes/categories');
+// const logRoutes = require('./routes/log.js'); // Removed, use Pino logger
 
-app.use('/log', logRoutes);
+const app = express();
+const PORT = process.env.PORT || 3012;
+
+// --- Global Middleware (Order is Crucial!) ---
+
+// 1. HTTP Request Logging (Morgan - runs first)
+// Consider replacing with pino-http for fully structured JSON logs if desired
+app.use(morgan('dev'));
+
+// 2. Stripe Webhook Route - MUST come BEFORE express.json()
+// Use express.raw() to get the raw body buffer for Stripe signature verification
+// Mount directly, assumes stripeRoutes handles the POST '/' path for this specific mount
+app.post('/webhook/stripe', express.raw({ type: 'application/json' }), stripeRoutes);
+logger.info('Stripe webhook route configured with raw body parser at POST /webhook/stripe');
+
+// 3. CORS Middleware
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : [];
+if (process.env.NODE_ENV !== 'production') {
+    allowedOrigins.push('http://localhost:4321'); // Astro default dev port
+    logger.info({ addedDevOrigin: 'http://localhost:4321'}, '[CORS] Added development origin');
+}
+logger.info({ allowedOrigins }, '[CORS] Allowed origins configured.');
+
+const corsOptionsDelegate = function (req, callback) {
+    const requestOrigin = req.header('Origin');
+    // Allow requests with no origin OR if origin is in the allowed list
+    const isAllowed = !requestOrigin || allowedOrigins.includes(requestOrigin);
+    const corsOptions = {
+        origin: isAllowed ? true : false, // Allow reflection or block
+        credentials: true, // Allow cookies/auth headers
+        methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+        exposedHeaders: ['Content-Range', 'X-Content-Range', 'Set-Cookie'],
+        maxAge: 86400 // Cache preflight for 1 day
+    };
+    logger.debug({ origin: requestOrigin, allowed: isAllowed }, `[CORS] Decision processed`);
+    callback(null, corsOptions);
+};
+app.use(cors(corsOptionsDelegate));
+
+// 4. Cookie Parser (Needed before routes using auth middleware)
+app.use(cookieParser());
+
+// 5. Standard JSON & URL-Encoded Body Parsers (AFTER raw webhook)
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+
+// --- API Routes ---
+// Mount routes WITHOUT the /api prefix
+logger.info('Mounting API routes...');
+app.use('/chat', chatRoutes);
+app.use('/contact', contactRoutes);
+// app.use('/log', logRoutes); // Consider removing, use Pino
 app.use('/categories', categoryRoutes);
 app.use('/files', fileRoutes);
 app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
-app.use('/', stripeRoutes);
 
-// --- DEV / TEST ROUTES ---
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'API is running! You may make requests' });
+// Mount OTHER (non-webhook) Stripe routes under /stripe prefix
+// The handlers inside stripe.js should use relative paths (e.g., '/create-payment-intent')
+app.use('/stripe', stripeRoutes);
+logger.info('Other Stripe routes (like create-payment-intent) mounted at /stripe');
+
+
+// --- Health Check & Dev/Test Routes ---
+app.get('/health', (req, res) => res.status(200).json({ status: 'API is running' }));
+// Keep other test/debug routes if needed...
+
+
+// --- Error Handling Middleware (MUST be LAST) ---
+
+// 404 Handler
+app.use((req, res, next) => {
+    logger.warn({ method: req.method, url: req.originalUrl }, "Route not found");
+    res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} not found` });
 });
 
-app.get('/test-file-routes', (req, res) => {
-  res.status(200).json({ 
-    message: 'File routes test endpoint', 
-    fileRoutesLocation: '/api/files/*',
-    uploadEndpoint: '/api/files/upload' 
-  });
-});
-
-app.post('/debug/echo', (req, res) => {
-  res.json({
-    body: req.body,
-    query: req.query,
-    params: req.params,
-    method: req.method,
-    contentType: req.get('Content-Type')
-  });
-});
-
-// --- GLOBAL ERROR HANDLER ---
+// Global Error Handler
 app.use((err, req, res, next) => {
-  console.error('Global error handler caught:', err);
-  res.status(500).json({ 
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'production' ? {} : {
-      message: err.message,
-      stack: err.stack
+    logger.error({ err, url: req.originalUrl }, 'Global error handler caught exception');
+    // Avoid sending detailed stack in production
+    const errorResponse = {
+         message: err.message || 'Something went wrong!'
+    };
+    if (process.env.NODE_ENV !== 'production') {
+         errorResponse.stack = err.stack;
     }
-  });
+    res.status(err.status || 500).json(errorResponse);
 });
 
-// --- 404 HANDLER ---
-app.use((req, res) => {
-  res.status(404).json({ message: `Route ${req.method} ${req.originalUrl} not found` });
-});
-
-// --- START SERVER ---
+// --- Start Server ---
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`File upload endpoint available at: http://localhost:${PORT}/api/files/upload`);
+    logger.info(`Server running on port ${PORT}`);
 });
 
-module.exports = app;
+module.exports = app; // Keep if needed for tests
