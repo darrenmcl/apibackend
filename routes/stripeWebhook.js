@@ -9,6 +9,21 @@ module.exports = async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
     const signature = req.headers['stripe-signature'];
 
+
+logger.info({
+    path: req.path,
+    originalUrl: req.originalUrl,
+    contentType: req.headers['content-type']
+}, "[Stripe Webhook] Incoming request details");
+
+logger.info({
+  isBuffer: Buffer.isBuffer(req.body),
+  constructorName: req.body?.constructor?.name,
+  typeOfBody: typeof req.body,
+  preview: Buffer.isBuffer(req.body) ? req.body.slice(0, 20).toString('hex') : 'NOT A BUFFER'
+}, '[Webhook Body Debug]');
+
+
     logger.info({
         headers: {
             'content-type': req.headers['content-type'],

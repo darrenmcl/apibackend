@@ -31,13 +31,14 @@ const stripeRoutes = require('./routes/stripe'); // /stripe routes (not webhook)
 const stripeWebhookHandler = require('./routes/stripeWebhook'); // Webhook handler (raw body)
 
 // --- Global Middleware (ORDER MATTERS) ---
-
 // 1. Logging
 app.use(morgan('dev'));
 
-// 2. Stripe Webhook Route (MUST be before body parser)
-app.post('/webhook/stripe', express.raw({ type: 'application/json' }), stripeWebhookHandler);
-logger.info('Stripe webhook route configured at POST /webhook/stripe');
+// 2. Stripe Webhook Routes (MUST be before body parser) - Handle multiple possible paths
+// Using '*/*' type to capture all content types that Stripe might send
+app.post('/webhook/stripe', express.raw({ type: '*/*' }), stripeWebhookHandler);
+app.post('/webhook', express.raw({ type: '*/*' }), stripeWebhookHandler);  // Backup/alternative path
+logger.info('Stripe webhook routes configured at POST /webhook/stripe and POST /webhook');
 
 // 3. CORS
 const allowedOrigins = process.env.ALLOWED_ORIGINS

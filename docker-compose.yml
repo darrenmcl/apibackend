@@ -1,55 +1,131 @@
+# /var/projects/backend-api/docker-compose.yml
+# --- REVISED with Correct Build Contexts & LLM Worker ---
+
 version: "3.8"
+
 services:
+  # --- RabbitMQ Service ---
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      # Use environment variables from main .env or defaults if running compose from root
+      # If running from backend-api dir, these need defaults or be defined in backend-api/.env
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: PCPLm4hnigq#2025
+      # Use environment variables or defaults for RabbitMQ credentials
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-PCPLm4hnigq#2025} # Consider Docker Secrets for production
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - rabbitmq_data:/var/lib/rabbitmq # Persist RabbitMQ data
     restart: unless-stopped
-    
-  backend:
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # --- PostgreSQL Database Service (Placeholder - Adapt to your actual setup) ---
+  pgvector-db:
+    image: pgvector/pgvector:pg16 # Ensure this matches your image
+    container_name: pgvector-db
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432" # Map host port to container 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      # Load sensitive DB credentials from your .env file
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    restart: unless-stopped
+    # Add healthcheck if needed
+
+  # --- Main Backend API ---
+  backend-api:
     build:
-      context: .
+      context: . # CORRECT: Build context is the current directory (backend-api/)
+      dockerfile: Dockerfile # Assumes Dockerfile is in backend-api/
     container_name: backend-api
     ports:
-      - "3012:3012"
+      - "${BACKEND_PORT:-3012}:3012"
     env_file:
-      - .env
+      - ./.env # CORRECT: Loads .env from the backend-api/ directory
     volumes:
+      # Mount code for development; Use COPY in Dockerfile for production
       - .:/usr/src/app
+      - /usr/src/app/node_modules # Prevent host node_modules overwriting container
     depends_on:
-      - rabbitmq
+      rabbitmq:
+         condition: service_healthy # Wait for RabbitMQ to be healthy
+      pgvector-db:
+         condition: service_started # Wait for DB service (use service_healthy if DB has healthcheck)
     restart: unless-stopped
-    
+    # Specify start command if not defined in Dockerfile CMD
+    # command: node index.js # Or pm2-runtime start ecosystem.config.js etc.
+
+  # --- Chat Worker ---
   chat-worker:
     build:
-      context: ./chat-worker
+      context: ./chat-worker # CORRECT: Subdirectory relative to docker-compose.yml
+      dockerfile: Dockerfile # Assumes Dockerfile is inside ./chat-worker
     container_name: chat-worker
     env_file:
-      - ./chat-worker/.env
+       - ./chat-worker/.env # Uses its own .env file
     volumes:
-      - ./chat-worker:/usr/src/app
+       - ./chat-worker:/usr/src/app
+       - /usr/src/app/node_modules
     depends_on:
-      - rabbitmq
+       rabbitmq:
+          condition: service_healthy
+       # Add pgvector-db if needed
     restart: unless-stopped
-    
-  email-consumer:
+    # command: node worker.js
+
+  # --- Email Consumer ---
+# Updated email-consumer section for docker-compose.yml
+# Updated email-consumer section for docker-compose.yml with shared code access
+
+email-consumer:
+  build:
+    context: . # Build from the root directory to include all files
+    dockerfile: ./email/Dockerfile # Use specific Dockerfile in email dir
+  container_name: email-consumer
+  env_file:
+    - ./email/.env  # Use dedicated .env file
+  volumes:
+    # Mount the entire project to ensure access to shared code
+    - .:/usr/src/app
+    # Create an anonymous volume for node_modules
+    - /usr/src/app/node_modules
+  depends_on:
+    rabbitmq:
+      condition: service_healthy
+  restart: unless-stopped
+  # Specify the correct entry point
+  command: node email/emailConsumer.js # Path from project root
+  # --- LLM Report Worker (NEW) ---
+  llm-report-worker:
     build:
-      context: ./email
-    container_name: email-consumer
+      context: ./llm-report-worker # CORRECT: Subdirectory relative to docker-compose.yml
+      dockerfile: Dockerfile # Requires Dockerfile inside ./llm-report-worker
+    container_name: llm-report-worker
     env_file:
-      - .env
+      - ./llm-report-worker/.env # <<< Requires its own .env file here
     volumes:
-      - ./email:/usr/src/app
+      # Mount code for development
+      - ./llm-report-worker:/usr/src/app
+      - /usr/src/app/node_modules # Isolate node_modules
     depends_on:
-      - rabbitmq
+      rabbitmq:
+         condition: service_healthy
+      pgvector-db:
+         condition: service_started # Needs DB access
     restart: unless-stopped
-    
+    command: node worker.js # Specify command to run the worker
+
+# --- Named Volumes ---
 volumes:
   rabbitmq_data:
+  postgres_data: # Define volume for DB data persistence
