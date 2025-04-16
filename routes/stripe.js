@@ -2,7 +2,9 @@
 
 const express = require('express');
 const router = express.Router();
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY); // Ensure key is set
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: '2024-04-10'
+});
 const auth = require('../middlewares/auth'); // For create-payment-intent
 const logger = require('../lib/logger');     // Pino logger
 

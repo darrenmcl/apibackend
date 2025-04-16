@@ -200,10 +200,10 @@ router.post('/', auth, async (req, res) => {
     const userEmail = req.user?.email;
     const userIdForLogs = req.user?.userId;
 
-    if (!customerId || !userEmail) {
-        logger.error({ userId: userIdForLogs, customerId, userEmail }, `[${requestStartTime}] [POST /orders] Missing customerId or email from req.user.`);
-        return res.status(401).json({ message: 'User customer ID or email could not be determined from token.' });
-    }
+if (!customerId || !userEmail) {
+    logger.error({ customerId, userIdForLogs }, `[${requestStartTime}] [POST /orders] Authentication error: Missing customer ID or email`);
+    return res.status(401).json({ message: 'Authentication error: Missing customer ID or email' });
+}
 
     const { items } = req.body;
 
