@@ -111,13 +111,11 @@ services:
     container_name: llm-report-worker
     env_file:
       - ./llm-report-worker/.env
-    volumes:
-      - ./llm-report-worker:/usr/src/app
-      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+
 
 # --- Named Volumes ---
 volumes:

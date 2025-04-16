@@ -6,21 +6,19 @@ const logger = require('./lib/logger'); // Your Pino logger setup
 const db = require('./config/db'); // Your DB pool setup
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { v4: uuidv4 } = require('uuid'); // Make sure to install this with npm install uuid
-// const { PDFDocument } = require('pdfkit'); // Example PDF lib
-// const OpenAI = require('openai'); // Example LLM lib
 
 // --- Configuration ---
-// Updated RabbitMQ connection URL with proper Docker service name and credentials
-const RABBITMQ_HOST = process.env.RABBITMQ_HOST || 'rabbitmq';
-const RABBITMQ_PORT = process.env.RABBITMQ_PORT || '5672';
-const RABBITMQ_USER = process.env.RABBITMQ_USER || 'admin';
-const RABBITMQ_PASS = process.env.RABBITMQ_PASS || 'PCPLm4hnigq#2025';
-const RABBITMQ_URL = `amqp://${RABBITMQ_USER}:${RABBITMQ_PASS}@${RABBITMQ_HOST}:${RABBITMQ_PORT}`;
+// Use the object approach instead of URL string
+const rabbitMQConfig = {
+  hostname: process.env.RABBITMQ_HOST || 'rabbitmq',
+  port: parseInt(process.env.RABBITMQ_PORT || '5672'),
+  username: process.env.RABBITMQ_USER || 'admin',
+  password: process.env.RABBITMQ_PASS || 'PCPLm4hnigq#2025'
+};
 
 const QUEUE_NAME = 'llm_report_jobs';
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME;
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
-// const LLM_API_KEY = process.env.YOUR_LLM_API_KEY; // Example
 
 // --- Initialize Clients (Ensure proper error handling) ---
 let s3Client;
@@ -29,20 +27,13 @@ try {
     logger.info('S3 Client Initialized for Worker.');
 } catch(err) { logger.error({err}, "Worker failed to initialize S3 Client"); process.exit(1); }
 
-// let llmClient;
-// try {
-//     llmClient = new OpenAI({ apiKey: LLM_API_KEY }); // Example
-//     logger.info('LLM Client Initialized for Worker.');
-// } catch(err) { logger.error({err}, "Worker failed to initialize LLM Client"); process.exit(1); }
-
-
 let rabbitChannel = null;
 
 // --- Main Worker Function ---
 async function runWorker() {
     try {
-        logger.info(`Worker connecting to RabbitMQ: ${RABBITMQ_URL}`);
-        const connection = await amqp.connect(RABBITMQ_URL);
+        logger.info(`Worker connecting to RabbitMQ: ${rabbitMQConfig.hostname}:${rabbitMQConfig.port}`);
+        const connection = await amqp.connect(rabbitMQConfig);
         rabbitChannel = await connection.createChannel();
         logger.info('[Worker] RabbitMQ connection and channel established.');
 
