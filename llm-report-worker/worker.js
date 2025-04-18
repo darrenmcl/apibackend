@@ -1,4 +1,4 @@
-// /var/projects/llm-report-worker/worker.js (Integrated Version)
+// /var/projects/llm-report-worker/worker.js (Revised Version)
 
 require('dotenv').config(); // Load .env file from worker directory
 const amqp = require('amqplib');
@@ -178,15 +178,28 @@ async function runWorker() {
 
                 // --- 5. Update Database ---
                 logger.info({ orderId: jobData.orderId, productId: jobData.productId, key: s3Key }, `Updating database...`);
-                // Update metadata on the specific order_line_item
+                
+                // FIXED QUERY: Added explicit type casting for all parameters
                 const updateQuery = `
                     UPDATE order_line_item
-                    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('llm_status', 'completed', 's3_key', $1)
+                    SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('llm_status', 'completed', 's3_key', $1::text)
                     WHERE product_id = $2::text
-                      AND id IN (SELECT item_id FROM order_item WHERE order_id = $3)
+                      AND id IN (SELECT item_id FROM order_item WHERE order_id = $3::text)
                     RETURNING id`; // Return the id to confirm the update worked
+                
+                // Log parameter types to help debug
+                logger.debug({
+                    s3KeyType: typeof s3Key,
+                    s3KeyValue: s3Key,
+                    productIdType: typeof jobData.productId,
+                    productIdValue: jobData.productId,
+                    orderIdType: typeof jobData.orderId,
+                    orderIdValue: jobData.orderId
+                }, 'Database update parameter details');
+                
                 const updateParams = [s3Key, jobData.productId, jobData.orderId];
                 const updateResult = await db.query(updateQuery, updateParams);
+                
                 if (updateResult.rowCount > 0) {
                      logger.info({ orderId: jobData.orderId, productId: jobData.productId }, `Database updated successfully with S3 key.`);
                 } else {

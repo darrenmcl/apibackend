@@ -1,5 +1,5 @@
 # /var/projects/backend-api/docker-compose.yml
-# --- REVISED with Correct Build Contexts & LLM Worker ---
+# --- REVISED with Different PostgreSQL Port ---
 
 version: "3.8"
 
@@ -9,16 +9,13 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      # Use environment variables from main .env or defaults if running compose from root
-      # If running from backend-api dir, these need defaults or be defined in backend-api/.env
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     environment:
-      # Use environment variables or defaults for RabbitMQ credentials
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-admin}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-PCPLm4hnigq#2025} # Consider Docker Secrets for production
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-PCPLm4hnigq#2025}
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq # Persist RabbitMQ data
+      - rabbitmq_data:/var/lib/rabbitmq
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
@@ -26,84 +23,102 @@ services:
       timeout: 10s
       retries: 5
 
-  # --- PostgreSQL Database Service (Placeholder - Adapt to your actual setup) ---
+  # --- PostgreSQL Database Service ---
   pgvector-db:
-    image: pgvector/pgvector:pg16 # Ensure this matches your image
+    image: pgvector/pgvector:pg16
     container_name: pgvector-db
     ports:
-      - "${POSTGRES_PORT:-5433}:5432" # Map host port to container 5432
+      - "${POSTGRES_PORT:-5433}:5432" # FIXED: Use 5433 on host, 5432 in container
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
-      # Load sensitive DB credentials from your .env file
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     restart: unless-stopped
-    # Add healthcheck if needed
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # --- Main Backend API ---
   backend-api:
     build:
-      context: . # CORRECT: Build context is the current directory (backend-api/)
-      dockerfile: Dockerfile # Assumes Dockerfile is in backend-api/
+      context: .
+      dockerfile: Dockerfile
     container_name: backend-api
     ports:
       - "${BACKEND_PORT:-3012}:3012"
     env_file:
-      - ./.env # CORRECT: Loads .env from the backend-api/ directory
+      - ./.env
+    environment:
+      # DB settings - use pgvector-db service name
+      DB_HOST: pgvector-db
+      DB_PORT: 5432 # Container internal port
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-postgres}
     volumes:
-      # Mount code for development; Use COPY in Dockerfile for production
       - .:/usr/src/app
-      - /usr/src/app/node_modules # Prevent host node_modules overwriting container
+      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
-         condition: service_healthy # Wait for RabbitMQ to be healthy
+         condition: service_healthy
       pgvector-db:
-         condition: service_started # Wait for DB service (use service_healthy if DB has healthcheck)
+         condition: service_healthy
     restart: unless-stopped
-    # Specify start command if not defined in Dockerfile CMD
-    # command: node index.js # Or pm2-runtime start ecosystem.config.js etc.
 
   # --- Chat Worker ---
   chat-worker:
     build:
-      context: ./chat-worker # CORRECT: Subdirectory relative to docker-compose.yml
-      dockerfile: Dockerfile # Assumes Dockerfile is inside ./chat-worker
+      context: ./chat-worker
+      dockerfile: Dockerfile
     container_name: chat-worker
     env_file:
-       - ./chat-worker/.env # Uses its own .env file
+       - ./chat-worker/.env
+    environment:
+      DB_HOST: pgvector-db
+      DB_PORT: 5432 # Container internal port
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-postgres}
     volumes:
        - ./chat-worker:/usr/src/app
        - /usr/src/app/node_modules
     depends_on:
        rabbitmq:
           condition: service_healthy
-       # Add pgvector-db if needed
+       pgvector-db:
+          condition: service_healthy
     restart: unless-stopped
-    # command: node worker.js
 
   # --- Email Consumer ---
   email-consumer:
     build:
-      context: . # Build from the root directory to include all files
-      dockerfile: ./email/Dockerfile # Use specific Dockerfile in email dir
+      context: .
+      dockerfile: ./email/Dockerfile
     container_name: email-consumer
     env_file:
-      - ./email/.env  # Use dedicated .env file
+      - ./email/.env
+    environment:
+      DB_HOST: pgvector-db
+      DB_PORT: 5432 # Container internal port
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-postgres}
     volumes:
-      # Mount the entire project to ensure access to shared code
       - .:/usr/src/app
-      # Create an anonymous volume for node_modules
       - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
+      pgvector-db:
+        condition: service_healthy
     restart: unless-stopped
-    # Specify the correct entry point
-    command: node email/emailConsumer.js # Path from project root
+    command: node email/emailConsumer.js
 
-  # --- LLM Report Worker (NEW) ---
+  # --- LLM Report Worker ---
   llm-report-worker:
     build:
       context: ./llm-report-worker
@@ -111,16 +126,31 @@ services:
     container_name: llm-report-worker
     env_file:
       - ./llm-report-worker/.env
+    environment:
+      DB_HOST: pgvector-db
+      DB_PORT: 5432 # Container internal port
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DB_NAME: ${POSTGRES_DB:-postgres}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
     volumes:
       - ./llm-report-worker:/usr/src/app
       - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
+      pgvector-db:
+        condition: service_healthy
     restart: unless-stopped
 
+# --- Define a custom network ---
+networks:
+  default:
+    name: backend-network
+    driver: bridge
 
 # --- Named Volumes ---
 volumes:
   rabbitmq_data:
-  postgres_data: # Define volume for DB data persistence
+  postgres_data:
