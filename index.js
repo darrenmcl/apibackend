@@ -25,6 +25,7 @@ const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 const blogPosts = require('./routes/blogPosts');
+const blogCategoryRoutes = require('./routes/blogCategories');
 const fileRoutes = require('./routes/fileRoutes');
 const categoryRoutes = require('./routes/categories');
 const stripeRoutes = require('./routes/stripe'); // /stripe routes (not webhook)
@@ -82,6 +83,8 @@ app.use('/users', userRoutes);
 app.use('/products', productRoutes);
 app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
+app.use('/blog-categories', blogCategoryRoutes);
+logger.info('Blog Category routes mounted at /blog-categories');
 app.use('/stripe', stripeRoutes); // create-payment-intent, etc.
 logger.info('Stripe routes mounted under /stripe');
 

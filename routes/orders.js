@@ -138,44 +138,44 @@ router.get('/:id', auth, async (req, res) => {
         logger.info(`[${requestStartTime}] [GET /orders/:id] Access granted for Order ${order.id}.`);
 
         // 2. Fetch Line Items with Product Details
-        logger.debug(`Fetching line items for Order ID: ${orderId}`);
-        const itemsQueryText = `
-            SELECT
-                oi.id as order_item_id,
-                oi.quantity,
-                oli.id as line_item_id,
-                oli.title as line_item_title,
-                oli.thumbnail as line_item_thumbnail,
-                oli.unit_price as line_item_unit_price,
-                oli.product_id,
-                p.id as product_table_id,
-                p.name as product_name,
-                p.slug as product_slug,
-                p.is_digital,
-                p.s3_file_key
-            FROM order_item oi
-            JOIN order_line_item oli ON oli.id = oi.item_id
-            LEFT JOIN products p ON oli.product_id::integer = p.id
-            WHERE oi.order_id = $1
-            ORDER BY oli.created_at ASC;
-        `;
-        const itemsResult = await db.query(itemsQueryText, [orderId]);
+// Inside GET /orders/:id handler in routes/orders.js
 
-        // Map results to a clean structure
-        const lineItems = itemsResult.rows.map(item => ({
-            order_item_id: item.order_item_id,
-            quantity: parseInt(item.quantity, 10),
-            title: item.line_item_title || item.product_name || 'Item Not Found',
-            thumbnail: item.line_item_thumbnail,
-            unit_price: parseFloat(item.line_item_unit_price),
-            product: item.product_table_id ? {
-                id: item.product_table_id,
-                slug: item.product_slug,
-                is_digital: item.is_digital ?? false,
-                s3_file_key: item.s3_file_key
-            } : null
-        }));
-        
+       // 2. Fetch Line Items JOINING Product Details
+       logger.debug({ orderId }, `Workspaceing line items`);
+       const itemsQueryText = `
+           SELECT
+               oi.id as order_item_id, oi.quantity,
+               oli.id as line_item_id, oli.title as line_item_title,
+               oli.thumbnail as line_item_thumbnail, oli.unit_price as line_item_unit_price,
+               oli.product_id as line_item_product_id_text,
+               oli.metadata as line_item_metadata, -- Keep this
+               p.id as product_id, p.name as product_name, p.slug as product_slug,
+               p.is_digital, p.s3_file_key,
+               p.requires_llm_generation -- <<< ADD THIS FIELD TO SELECT
+           FROM order_item oi
+           JOIN order_line_item oli ON oli.id = oi.item_id
+           LEFT JOIN products p ON oli.product_id::integer = p.id
+           WHERE oi.order_id = $1
+           ORDER BY oli.created_at ASC;
+       `;
+       const itemsResult = await db.query(itemsQueryText, [orderId]);
+
+       // Map results
+       const lineItems = itemsResult.rows.map(item => ({
+           order_item_id: item.order_item_id,
+           quantity: parseInt(item.quantity, 10),
+           title: item.line_item_title || item.product_name || 'Item Not Found',
+           thumbnail: item.line_item_thumbnail,
+           unit_price: parseFloat(item.line_item_unit_price),
+           metadata: item.line_item_metadata || {}, // Keep mapping metadata
+           product: item.product_id ? {
+               id: item.product_id,
+               slug: item.product_slug,
+               is_digital: item.is_digital ?? false,
+               s3_file_key: item.s3_file_key,
+               requires_llm_generation: item.requires_llm_generation ?? false // <<< ADD THIS FIELD TO MAPPING
+           } : null
+       }));
         logger.info(`[${requestStartTime}] [GET /orders/:id] Fetched ${lineItems.length} line items for Order ${order.id}.`);
 
         // 3. Return Combined Data
@@ -500,66 +500,115 @@ router.post('/update-status', auth, async (req, res) => {
 });
 
 // GET digital product download link
+// Replace the existing GET /:orderId/products/:productId/download-link handler in routes/orders.js
+
 router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req, res) => {
     const requestStartTime = new Date().toISOString();
-    const { orderId, productId: productIdParam } = req.params;
-    const customerId = req.user?.customerId;
-    const userIdForLogs = req.user?.userId;
+    const { orderId, productId: productIdParam } = req.params; // orderId=TEXT, productIdParam=String
+    const customerId = req.user?.customerId; // TEXT customer ID from JWT
+    const userIdForLogs = req.user?.userId; // For logging
+    const logger = require('../lib/logger'); // Ensure logger is required
+    const db = require('../config/db'); // Ensure db is required
+    const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3'); // Ensure required
+    const { getSignedUrl } = require('@aws-sdk/s3-request-presigner'); // Ensure required
+    const BUCKET_NAME = process.env.S3_BUCKET_NAME; // Ensure required
+    // Initialize s3Client correctly (ensure only done once, maybe move to top or shared service)
+    const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-1' });
+    const expiresIn = 300; // 5 minutes
 
-    logger.info({ orderId, productId: productIdParam, customerId, userId: userIdForLogs }, `[${requestStartTime}] [GET /download-link] Request received.`);
+    logger.info({ orderId, productId: productIdParam, customerId }, `[${requestStartTime}] [GET /download-link] Request received.`);
 
-    // Validate inputs
-    const productId = parseInt(productIdParam, 10);
-    if (!customerId) {
-        logger.warn(`[${requestStartTime}] Missing customerId in JWT for user ${userIdForLogs}.`);
-        return res.status(401).json({ message: 'Customer identifier missing.' });
-    }
-    
-    if (!orderId || !productId || isNaN(productId) || productId <= 0) {
-        logger.warn(`[${requestStartTime}] Invalid parameters received. OrderID: ${orderId}, ProductID: ${productIdParam}`);
+    const productId = parseInt(productIdParam, 10); // Use Integer for querying products table
+
+    // Basic Input Validation
+    if (!customerId || !orderId || !productId || isNaN(productId) || productId <= 0) {
+        logger.warn(`[${requestStartTime}] Invalid parameters received.`, { orderId, productIdParam, customerId });
         return res.status(400).json({ message: 'Invalid order or product ID specified.' });
     }
-    
     if (!BUCKET_NAME) {
         logger.error(`[${requestStartTime}] S3_BUCKET_NAME env var not set.`);
-        return res.status(500).json({ message: 'Server configuration error: Storage details missing.' });
+        return res.status(500).json({ message: 'Server configuration error.' });
     }
 
     try {
-        // Verify Purchase, Ownership, Status, Digital Product, and Get S3 Key in ONE query
-        logger.debug(`Verifying purchase & fetching S3 key: Customer ${customerId}, Order ${orderId}, Product ${productId}`);
+        // 1. Verify Purchase AND Get Product/Line Item Info Needed
+        logger.debug(`Verifying purchase & fetching file info: Cust ${customerId}, Order ${orderId}, Prod ${productId}`);
+
         const verificationQuery = `
-            SELECT p.s3_file_key
+            SELECT
+                p.is_digital,               -- From products table
+                p.requires_llm_generation,  -- From products table
+                p.s3_file_key as product_s3_key, -- Key stored ON the product record
+                oli.metadata as line_item_metadata -- Metadata JSONB from order_line_item
             FROM "order" o
-            JOIN order_item oi ON oi.order_id = o.id
-            JOIN order_line_item oli ON oli.id = oi.item_id
-            JOIN products p ON oli.product_id::integer = p.id
+            JOIN order_item oi ON oi.order_id = o.id             -- Join order -> item
+            JOIN order_line_item oli ON oli.id = oi.item_id        -- Join item -> line item
+            JOIN products p ON oli.product_id::integer = p.id -- Join line item -> product
             WHERE
-                o.id = $1
-                AND o.customer_id = $2
-                AND o.status = 'paid'
-                AND p.id = $3
-                AND p.is_digital = true
-                AND p.s3_file_key IS NOT NULL AND p.s3_file_key != ''
+              o.id = $1            -- Match Order ID (TEXT)
+              AND o.customer_id = $2 -- Match Customer ID (TEXT)
+              AND o.status = 'paid'  -- Match Status
+              AND p.id = $3            -- Match Product ID (INT)
+              AND p.is_digital = true  -- Ensure Product is Digital
             LIMIT 1;
         `;
-        
         const verificationResult = await db.query(verificationQuery, [orderId, customerId, productId]);
 
         if (verificationResult.rows.length === 0) {
-            logger.warn(`[${requestStartTime}] Verification failed for Customer ${customerId}, Order ${orderId}, Product ${productId}.`);
-            return res.status(403).json({ message: 'Access denied. Valid, downloadable purchase for this item not found.' });
+            // Failed ownership, status, product match, or product isn't digital
+            logger.warn(`[${requestStartTime}] Verification failed (Query 1) for Cust ${customerId}, Order ${orderId}, Prod ${productId}. Check ownership, status='paid', product in order, is_digital=true.`);
+            return res.status(403).json({ message: 'Access denied or product not downloadable.' });
         }
 
-        const s3FileKey = verificationResult.rows[0].s3_file_key;
-        logger.info(`[${requestStartTime}] Purchase verified successfully. Found S3 key: ${s3FileKey}`);
+        const itemData = verificationResult.rows[0];
+        let finalS3Key = null;
+        let isReady = false;
 
-        // Generate Pre-signed URL
-        const signedUrl = await getPresignedDownloadUrl(s3FileKey, 300);
-        logger.info(`[${requestStartTime}] Pre-signed URL generated successfully.`);
+        // 2. Determine Correct S3 Key based on product type and status
+        if (itemData.requires_llm_generation) {
+            // --- LLM Product ---
+            const llmStatus = itemData.line_item_metadata?.llm_status;
+            const s3KeyFromMeta = itemData.line_item_metadata?.s3_key;
+            logger.info({ orderId, productId, llmStatus }, "LLM product check.");
+            if (llmStatus === 'completed' && s3KeyFromMeta) {
+                finalS3Key = s3KeyFromMeta;
+                isReady = true;
+            } else {
+                 // If not completed, determine appropriate message/status
+                 let message = 'Your report is not ready yet.';
+                 if (llmStatus === 'failed') message = 'Report generation failed. Please contact support.';
+                 else if (llmStatus === 'queued' || llmStatus === 'processing') message = 'Report generation is still in progress.';
+                 else if (!s3KeyFromMeta && llmStatus === 'completed') message = 'Report completed but file key missing. Please contact support.'; // Error case
 
-        // Return the URL
-        res.status(200).json({ downloadUrl: signedUrl });
+                 logger.warn(`[${requestStartTime}] LLM download denied. Status: ${llmStatus}, Key: ${s3KeyFromMeta}`);
+                 return res.status(404).json({ message }); // Use 404 to indicate file not ready/available
+            }
+        } else {
+            // --- Standard Digital Product ---
+            logger.info({ orderId, productId }, "Standard digital product check.");
+            if (itemData.product_s3_key) { // Use the key directly from the products table
+                finalS3Key = itemData.product_s3_key;
+                isReady = true;
+            } else {
+                // Product is digital but has no key set in products table
+                logger.warn(`[${requestStartTime}] Standard digital product missing s3_file_key in products table for ID ${productId}.`);
+                return res.status(404).json({ message: 'Download file not available for this product.' });
+            }
+        }
+
+        // 3. Generate Pre-signed URL (only if ready and key found)
+        if (isReady && finalS3Key) {
+            logger.info({ key: finalS3Key }, `Purchase verified. Generating pre-signed URL.`);
+            const command = new GetObjectCommand({ Bucket: BUCKET_NAME, Key: finalS3Key });
+            const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
+            logger.info(`Pre-signed URL generated successfully.`);
+            res.status(200).json({ downloadUrl: signedUrl });
+        } else {
+             // Should have been caught above, but as a fallback
+             logger.error({ orderId, productId, isReady, finalS3Key }, "Logic error: Download should be ready but S3 key is missing.");
+             return res.status(500).json({ message: 'Internal server error determining download file.' });
+        }
+
     } catch (error) {
         logger.error({ err: error, orderId, productId, customerId }, `[${requestStartTime}] Error generating download link`);
         res.status(500).json({ message: 'Server error generating download link.' });
