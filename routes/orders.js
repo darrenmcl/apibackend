@@ -105,105 +105,6 @@ router.get('/my-orders', auth, async (req, res) => {
 });
 
 
-// GET a single order by ID (Owner or Admin only)
-router.get('/:id', auth, async (req, res) => {
-    const requestStartTime = new Date().toISOString();
-    const orderId = req.params.id;
-    const tokenCustomerId = req.user?.customerId;
-    const userRole = req.user?.role;
-    const userIdForLogs = req.user?.userId;
-
-    logger.info({ orderId, customerId: tokenCustomerId, userId: userIdForLogs, role: userRole }, `[${requestStartTime}] [GET /orders/:id] Request received.`);
-
-    if (!tokenCustomerId) {
-        logger.warn(`[${requestStartTime}] [GET /orders/:id] User ${userIdForLogs} missing customerId in token!`);
-        return res.status(401).json({ message: 'Customer identifier missing.' });
-    }
-    
-    if (!orderId) {
-        logger.warn(`[${requestStartTime}] [GET /orders/:id] Missing order ID in request path.`);
-        return res.status(400).json({ message: 'Invalid order ID.' });
-    }
-
-    try {
-        // 1. Fetch the main order record & Verify Ownership/Admin
-        logger.debug(`Fetching main order record for ID: ${orderId}`);
-        const orderQueryText = `SELECT id, customer_id, status, email, currency_code, created_at, updated_at, paid_at FROM "order" WHERE id = $1`;
-        const orderResult = await db.query(orderQueryText, [orderId]);
-
-        if (orderResult.rows.length === 0) {
-            logger.warn(`[${requestStartTime}] [GET /orders/:id] Order not found in DB for ID: ${orderId}`);
-            return res.status(404).json({ message: 'Order not found.' });
-        }
-
-        const order = orderResult.rows[0];
-        const orderCustomerId = order.customer_id;
-
-        logger.debug(`[Auth Check /orders/:id] Comparing Order's CustomerID: "${orderCustomerId}" with Token's CustomerID: "${tokenCustomerId}". Role: "${userRole}"`);
-        const isOwner = (orderCustomerId && tokenCustomerId && orderCustomerId === tokenCustomerId);
-        const isAdminUser = (userRole === 'admin');
-
-        if (!isOwner && !isAdminUser) {
-            logger.warn({ orderId, reqUser: userIdForLogs, reqCust: tokenCustomerId, orderCust: orderCustomerId }, `[${requestStartTime}] [GET /orders/:id] Forbidden Access.`);
-            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
-        }
-        
-        logger.info(`[${requestStartTime}] [GET /orders/:id] Access granted for Order ${order.id}.`);
-
-        // 2. Fetch Line Items with Product Details
-// Inside GET /orders/:id handler in routes/orders.js
-
-       // 2. Fetch Line Items JOINING Product Details
-       logger.debug({ orderId }, `Workspaceing line items`);
-       const itemsQueryText = `
-           SELECT
-               oi.id as order_item_id, oi.quantity,
-               oli.id as line_item_id, oli.title as line_item_title,
-               oli.thumbnail as line_item_thumbnail, oli.unit_price as line_item_unit_price,
-               oli.product_id as line_item_product_id_text,
-               oli.metadata as line_item_metadata, -- Keep this
-               p.id as product_id, p.name as product_name, p.slug as product_slug,
-               p.is_digital, p.s3_file_key,
-               p.requires_llm_generation -- <<< ADD THIS FIELD TO SELECT
-           FROM order_item oi
-           JOIN order_line_item oli ON oli.id = oi.item_id
-           LEFT JOIN products p ON oli.product_id::integer = p.id
-           WHERE oi.order_id = $1
-           ORDER BY oli.created_at ASC;
-       `;
-       const itemsResult = await db.query(itemsQueryText, [orderId]);
-
-       // Map results
-       const lineItems = itemsResult.rows.map(item => ({
-           order_item_id: item.order_item_id,
-           quantity: parseInt(item.quantity, 10),
-           title: item.line_item_title || item.product_name || 'Item Not Found',
-           thumbnail: item.line_item_thumbnail,
-           unit_price: parseFloat(item.line_item_unit_price),
-           metadata: item.line_item_metadata || {}, // Keep mapping metadata
-           product: item.product_id ? {
-               id: item.product_id,
-               slug: item.product_slug,
-               is_digital: item.is_digital ?? false,
-               s3_file_key: item.s3_file_key,
-               requires_llm_generation: item.requires_llm_generation ?? false // <<< ADD THIS FIELD TO MAPPING
-           } : null
-       }));
-        logger.info(`[${requestStartTime}] [GET /orders/:id] Fetched ${lineItems.length} line items for Order ${order.id}.`);
-
-        // 3. Return Combined Data
-        const fullOrderDetails = {
-            ...order,
-            items: lineItems
-        };
-
-        res.status(200).json(fullOrderDetails);
-    } catch (error) {
-        logger.error({ err: error, orderId, customerId: tokenCustomerId }, `[${requestStartTime}] [GET /orders/:id] Error fetching order details`);
-        res.status(500).json({ message: 'Server error fetching order details.' });
-    }
-});
-
 // POST create a new order
 router.post('/', auth, async (req, res) => {
     const requestStartTime = new Date().toISOString();
@@ -654,12 +555,104 @@ router.get('/my-recent', auth, async (req, res) => {
   }
 });
 
-// THEN your catch-all route like this
+// GET a single order by ID (Owner or Admin only)
 router.get('/:id', auth, async (req, res) => {
-  const orderId = req.params.id;
-  // logic for /orders/:id
-});
+    const requestStartTime = new Date().toISOString();
+    const orderId = req.params.id;
+    const tokenCustomerId = req.user?.customerId;
+    const userRole = req.user?.role;
+    const userIdForLogs = req.user?.userId;
 
+    logger.info({ orderId, customerId: tokenCustomerId, userId: userIdForLogs, role: userRole }, `[${requestStartTime}] [GET /orders/:id] Request received.`);
+
+    if (!tokenCustomerId) {
+        logger.warn(`[${requestStartTime}] [GET /orders/:id] User ${userIdForLogs} missing customerId in token!`);
+        return res.status(401).json({ message: 'Customer identifier missing.' });
+    }
+    
+    if (!orderId) {
+        logger.warn(`[${requestStartTime}] [GET /orders/:id] Missing order ID in request path.`);
+        return res.status(400).json({ message: 'Invalid order ID.' });
+    }
+
+    try {
+        // 1. Fetch the main order record & Verify Ownership/Admin
+        logger.debug(`Fetching main order record for ID: ${orderId}`);
+        const orderQueryText = `SELECT id, customer_id, status, email, currency_code, created_at, updated_at, paid_at FROM "order" WHERE id = $1`;
+        const orderResult = await db.query(orderQueryText, [orderId]);
+
+        if (orderResult.rows.length === 0) {
+            logger.warn(`[${requestStartTime}] [GET /orders/:id] Order not found in DB for ID: ${orderId}`);
+            return res.status(404).json({ message: 'Order not found.' });
+        }
+
+        const order = orderResult.rows[0];
+        const orderCustomerId = order.customer_id;
+
+        logger.debug(`[Auth Check /orders/:id] Comparing Order's CustomerID: "${orderCustomerId}" with Token's CustomerID: "${tokenCustomerId}". Role: "${userRole}"`);
+        const isOwner = (orderCustomerId && tokenCustomerId && orderCustomerId === tokenCustomerId);
+        const isAdminUser = (userRole === 'admin');
+
+        if (!isOwner && !isAdminUser) {
+            logger.warn({ orderId, reqUser: userIdForLogs, reqCust: tokenCustomerId, orderCust: orderCustomerId }, `[${requestStartTime}] [GET /orders/:id] Forbidden Access.`);
+            return res.status(403).json({ message: 'Forbidden: You do not have permission to view this order.' });
+        }
+        
+        logger.info(`[${requestStartTime}] [GET /orders/:id] Access granted for Order ${order.id}.`);
+
+        // 2. Fetch Line Items with Product Details
+// Inside GET /orders/:id handler in routes/orders.js
+
+       // 2. Fetch Line Items JOINING Product Details
+       logger.debug({ orderId }, `Workspaceing line items`);
+       const itemsQueryText = `
+           SELECT
+               oi.id as order_item_id, oi.quantity,
+               oli.id as line_item_id, oli.title as line_item_title,
+               oli.thumbnail as line_item_thumbnail, oli.unit_price as line_item_unit_price,
+               oli.product_id as line_item_product_id_text,
+               oli.metadata as line_item_metadata, -- Keep this
+               p.id as product_id, p.name as product_name, p.slug as product_slug,
+               p.is_digital, p.s3_file_key,
+               p.requires_llm_generation -- <<< ADD THIS FIELD TO SELECT
+           FROM order_item oi
+           JOIN order_line_item oli ON oli.id = oi.item_id
+           LEFT JOIN products p ON oli.product_id::integer = p.id
+           WHERE oi.order_id = $1
+           ORDER BY oli.created_at ASC;
+       `;
+       const itemsResult = await db.query(itemsQueryText, [orderId]);
+
+       // Map results
+       const lineItems = itemsResult.rows.map(item => ({
+           order_item_id: item.order_item_id,
+           quantity: parseInt(item.quantity, 10),
+           title: item.line_item_title || item.product_name || 'Item Not Found',
+           thumbnail: item.line_item_thumbnail,
+           unit_price: parseFloat(item.line_item_unit_price),
+           metadata: item.line_item_metadata || {}, // Keep mapping metadata
+           product: item.product_id ? {
+               id: item.product_id,
+               slug: item.product_slug,
+               is_digital: item.is_digital ?? false,
+               s3_file_key: item.s3_file_key,
+               requires_llm_generation: item.requires_llm_generation ?? false // <<< ADD THIS FIELD TO MAPPING
+           } : null
+       }));
+        logger.info(`[${requestStartTime}] [GET /orders/:id] Fetched ${lineItems.length} line items for Order ${order.id}.`);
+
+        // 3. Return Combined Data
+        const fullOrderDetails = {
+            ...order,
+            items: lineItems
+        };
+
+        res.status(200).json(fullOrderDetails);
+    } catch (error) {
+        logger.error({ err: error, orderId, customerId: tokenCustomerId }, `[${requestStartTime}] [GET /orders/:id] Error fetching order details`);
+        res.status(500).json({ message: 'Server error fetching order details.' });
+    }
+});
 
 
 module.exports = router;
