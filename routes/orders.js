@@ -629,35 +629,37 @@ router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req
 });
 
 // GET recent orders for the logged-in user (Non-admin)
+// GET /orders/my-recent - Returns up to 5 most recent orders for the logged-in user
+// Add this one FIRST
 router.get('/my-recent', auth, async (req, res) => {
-  const userId = req.user?.userId;
-  const customerId = req.user?.customerId;
-  const limit = 5;
-
   try {
+    const customerId = req.user?.customerId;
     if (!customerId) {
-      logger.warn(`[GET /orders/my-recent] Missing customerId for user ${userId}`);
-      return res.status(401).json({ message: 'Authentication error: Customer ID is missing.' });
+      return res.status(401).json({ message: 'Unauthorized. No customer ID.' });
     }
 
-    logger.info(`[GET /orders/my-recent] Fetching recent orders for customer: ${customerId}`);
+    const result = await db.query(
+      `SELECT id, status, currency_code, created_at, updated_at
+       FROM "order"
+       WHERE customer_id = $1
+       ORDER BY created_at DESC
+       LIMIT 5`,
+      [customerId]
+    );
 
-    const queryText = `
-      SELECT id, status, currency_code, total, created_at, updated_at
-      FROM "order"
-      WHERE customer_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2
-    `;
-    const result = await db.query(queryText, [customerId, limit]);
-
-    logger.info(`[GET /orders/my-recent] Found ${result.rows.length} orders for customer ${customerId}`);
     res.status(200).json(result.rows);
-  } catch (error) {
-    logger.error(`Error fetching recent orders for user ${userId}:`, error);
-    res.status(500).json({ message: 'Server error fetching your recent orders.' });
+  } catch (err) {
+    console.error("[/orders/my-recent] Failed:", err);
+    res.status(500).json({ message: 'Server error fetching recent orders.' });
   }
 });
+
+// THEN your catch-all route like this
+router.get('/:id', auth, async (req, res) => {
+  const orderId = req.params.id;
+  // logic for /orders/:id
+});
+
 
 
 module.exports = router;
