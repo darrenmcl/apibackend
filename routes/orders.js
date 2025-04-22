@@ -67,30 +67,43 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
 // ========== USER ROUTES ==========
 
 // GET user's own orders
+// GET user's own orders
 router.get('/my-orders', auth, async (req, res) => {
+    const requestStartTime = new Date().toISOString();
+    const customerId = req.user?.customerId;
+    const userId = req.user?.userId;
+
+    logger.info(`[${requestStartTime}] [GET /my-orders] Attempting fetch for customerId: ${customerId}`);
+
+    if (!customerId) {
+        logger.warn(`[${requestStartTime}] [GET /my-orders] Unauthorized access - Missing customerId. User: ${userId}`);
+        return res.status(401).json({ message: 'Customer ID not found in token.' });
+    }
+
     try {
-        const customerId = req.user?.customerId;
-        logger.info(`[GET /my-orders] Attempting fetch for customerId: ${customerId}`);
-
-        if (!customerId) {
-            return res.status(401).json({message: 'Customer ID not found in token.'});
-        }
-
         const queryText = `
-            SELECT id, status, currency_code, created_at, updated_at
+            SELECT id, status, currency_code, total, created_at, updated_at
             FROM "order"
             WHERE customer_id = $1
             ORDER BY created_at DESC
         `;
         const result = await db.query(queryText, [customerId]);
 
-        logger.info(`[GET /my-orders] Found ${result.rows.length} orders for customer ${customerId}`);
+        logger.info(`[${requestStartTime}] [GET /my-orders] Found ${result.rows.length} orders for customer ${customerId}`);
         res.status(200).json(result.rows);
     } catch (error) {
-        logger.error(`Error fetching orders for customer ${req.user?.customerId}:`, error);
+        logger.error(
+            {
+                err: error,
+                customerId,
+                userId,
+            },
+            `[${requestStartTime}] [GET /my-orders] Error fetching orders`
+        );
         res.status(500).json({ message: 'Server error fetching user orders.' });
     }
 });
+
 
 // GET a single order by ID (Owner or Admin only)
 router.get('/:id', auth, async (req, res) => {
@@ -614,5 +627,37 @@ router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req
         res.status(500).json({ message: 'Server error generating download link.' });
     }
 });
+
+// GET recent orders for the logged-in user (Non-admin)
+router.get('/my-recent', auth, async (req, res) => {
+  const userId = req.user?.userId;
+  const customerId = req.user?.customerId;
+  const limit = 5;
+
+  try {
+    if (!customerId) {
+      logger.warn(`[GET /orders/my-recent] Missing customerId for user ${userId}`);
+      return res.status(401).json({ message: 'Authentication error: Customer ID is missing.' });
+    }
+
+    logger.info(`[GET /orders/my-recent] Fetching recent orders for customer: ${customerId}`);
+
+    const queryText = `
+      SELECT id, status, currency_code, total, created_at, updated_at
+      FROM "order"
+      WHERE customer_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+    const result = await db.query(queryText, [customerId, limit]);
+
+    logger.info(`[GET /orders/my-recent] Found ${result.rows.length} orders for customer ${customerId}`);
+    res.status(200).json(result.rows);
+  } catch (error) {
+    logger.error(`Error fetching recent orders for user ${userId}:`, error);
+    res.status(500).json({ message: 'Server error fetching your recent orders.' });
+  }
+});
+
 
 module.exports = router;
