@@ -67,7 +67,6 @@ router.delete('/:id', auth, isAdmin, async (req, res) => {
 // ========== USER ROUTES ==========
 
 // GET user's own orders
-// GET user's own orders
 router.get('/my-orders', auth, async (req, res) => {
     const requestStartTime = new Date().toISOString();
     const customerId = req.user?.customerId;
@@ -104,6 +103,29 @@ router.get('/my-orders', auth, async (req, res) => {
     }
 });
 
+// GET recent orders for the logged-in user (Non-admin)
+router.get('/my-recent', auth, async (req, res) => {
+  try {
+    const customerId = req.user?.customerId;
+    if (!customerId) {
+      return res.status(401).json({ message: 'Unauthorized. No customer ID.' });
+    }
+
+    const result = await db.query(
+      `SELECT id, status, currency_code, created_at, updated_at
+       FROM "order"
+       WHERE customer_id = $1
+       ORDER BY created_at DESC
+       LIMIT 5`,
+      [customerId]
+    );
+
+    res.status(200).json(result.rows);
+  } catch (err) {
+    console.error("[/orders/my-recent] Failed:", err);
+    res.status(500).json({ message: 'Server error fetching recent orders.' });
+  }
+});
 
 // POST create a new order
 router.post('/', auth, async (req, res) => {
@@ -414,8 +436,6 @@ router.post('/update-status', auth, async (req, res) => {
 });
 
 // GET digital product download link
-// Replace the existing GET /:orderId/products/:productId/download-link handler in routes/orders.js
-
 router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req, res) => {
     const requestStartTime = new Date().toISOString();
     const { orderId, productId: productIdParam } = req.params; // orderId=TEXT, productIdParam=String
@@ -529,33 +549,8 @@ router.get('/:orderId/products/:productId(\\d+)/download-link', auth, async (req
     }
 });
 
-// GET recent orders for the logged-in user (Non-admin)
-// GET /orders/my-recent - Returns up to 5 most recent orders for the logged-in user
-// Add this one FIRST
-router.get('/my-recent', auth, async (req, res) => {
-  try {
-    const customerId = req.user?.customerId;
-    if (!customerId) {
-      return res.status(401).json({ message: 'Unauthorized. No customer ID.' });
-    }
-
-    const result = await db.query(
-      `SELECT id, status, currency_code, created_at, updated_at
-       FROM "order"
-       WHERE customer_id = $1
-       ORDER BY created_at DESC
-       LIMIT 5`,
-      [customerId]
-    );
-
-    res.status(200).json(result.rows);
-  } catch (err) {
-    console.error("[/orders/my-recent] Failed:", err);
-    res.status(500).json({ message: 'Server error fetching recent orders.' });
-  }
-});
-
 // GET a single order by ID (Owner or Admin only)
+// This should be the LAST route as it contains a wildcard
 router.get('/:id', auth, async (req, res) => {
     const requestStartTime = new Date().toISOString();
     const orderId = req.params.id;
@@ -600,45 +595,42 @@ router.get('/:id', auth, async (req, res) => {
         
         logger.info(`[${requestStartTime}] [GET /orders/:id] Access granted for Order ${order.id}.`);
 
-        // 2. Fetch Line Items with Product Details
-// Inside GET /orders/:id handler in routes/orders.js
+        // 2. Fetch Line Items JOINING Product Details
+        logger.debug({ orderId }, `Fetching line items`);
+        const itemsQueryText = `
+            SELECT
+                oi.id as order_item_id, oi.quantity,
+                oli.id as line_item_id, oli.title as line_item_title,
+                oli.thumbnail as line_item_thumbnail, oli.unit_price as line_item_unit_price,
+                oli.product_id as line_item_product_id_text,
+                oli.metadata as line_item_metadata, -- Keep this
+                p.id as product_id, p.name as product_name, p.slug as product_slug,
+                p.is_digital, p.s3_file_key,
+                p.requires_llm_generation -- <<< ADD THIS FIELD TO SELECT
+            FROM order_item oi
+            JOIN order_line_item oli ON oli.id = oi.item_id
+            LEFT JOIN products p ON oli.product_id::integer = p.id
+            WHERE oi.order_id = $1
+            ORDER BY oli.created_at ASC;
+        `;
+        const itemsResult = await db.query(itemsQueryText, [orderId]);
 
-       // 2. Fetch Line Items JOINING Product Details
-       logger.debug({ orderId }, `Workspaceing line items`);
-       const itemsQueryText = `
-           SELECT
-               oi.id as order_item_id, oi.quantity,
-               oli.id as line_item_id, oli.title as line_item_title,
-               oli.thumbnail as line_item_thumbnail, oli.unit_price as line_item_unit_price,
-               oli.product_id as line_item_product_id_text,
-               oli.metadata as line_item_metadata, -- Keep this
-               p.id as product_id, p.name as product_name, p.slug as product_slug,
-               p.is_digital, p.s3_file_key,
-               p.requires_llm_generation -- <<< ADD THIS FIELD TO SELECT
-           FROM order_item oi
-           JOIN order_line_item oli ON oli.id = oi.item_id
-           LEFT JOIN products p ON oli.product_id::integer = p.id
-           WHERE oi.order_id = $1
-           ORDER BY oli.created_at ASC;
-       `;
-       const itemsResult = await db.query(itemsQueryText, [orderId]);
-
-       // Map results
-       const lineItems = itemsResult.rows.map(item => ({
-           order_item_id: item.order_item_id,
-           quantity: parseInt(item.quantity, 10),
-           title: item.line_item_title || item.product_name || 'Item Not Found',
-           thumbnail: item.line_item_thumbnail,
-           unit_price: parseFloat(item.line_item_unit_price),
-           metadata: item.line_item_metadata || {}, // Keep mapping metadata
-           product: item.product_id ? {
-               id: item.product_id,
-               slug: item.product_slug,
-               is_digital: item.is_digital ?? false,
-               s3_file_key: item.s3_file_key,
-               requires_llm_generation: item.requires_llm_generation ?? false // <<< ADD THIS FIELD TO MAPPING
-           } : null
-       }));
+        // Map results
+        const lineItems = itemsResult.rows.map(item => ({
+            order_item_id: item.order_item_id,
+            quantity: parseInt(item.quantity, 10),
+            title: item.line_item_title || item.product_name || 'Item Not Found',
+            thumbnail: item.line_item_thumbnail,
+            unit_price: parseFloat(item.line_item_unit_price),
+            metadata: item.line_item_metadata || {}, // Keep mapping metadata
+            product: item.product_id ? {
+                id: item.product_id,
+                slug: item.product_slug,
+                is_digital: item.is_digital ?? false,
+                s3_file_key: item.s3_file_key,
+                requires_llm_generation: item.requires_llm_generation ?? false // <<< ADD THIS FIELD TO MAPPING
+            } : null
+        }));
         logger.info(`[${requestStartTime}] [GET /orders/:id] Fetched ${lineItems.length} line items for Order ${order.id}.`);
 
         // 3. Return Combined Data

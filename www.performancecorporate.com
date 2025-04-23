@@ -30,16 +30,23 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    
+    #add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src *; img-src * data:; font-src *; frame-src *;" always;    
     # CSP (Updated to allow chat, fonts, and analytics)xy
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://js.stripe.com https://m.stripe.network https://www.googletagmanager.com https://www.google-analytics.com https://tagmanager.google.com https://c.clarity.ms https://*.clarity.ms; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://tagmanager.google.com; img-src 'self' data: https://*.stripe.com https://maps.gstatic.com https://assets.performancecorporate.com https://placehold.co https://c.clarity.ms https://c.bing.com https://www.googletagmanager.com https://www.google-analytics.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.stripe.com https://store.performancecorporate.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://*.clarity.ms; frame-src 'self' https://*.stripe.com https://js.stripe.com https://*.doubleclick.net https://td.doubleclick.net https://www.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; upgrade-insecure-requests;" always;
    # Static assets
-    location ~ ^(/_astro/|.*\.(jpg|jpeg|png|gif|ico|css|js|svg|webp|woff|woff2))$ {
+    location ~ ^(/_astro/|/scripts/|.*\.(jpg|jpeg|png|gif|ico|css|js|svg|webp|woff|woff2))$ {
         try_files $uri =404;
         expires 7d;
         add_header Cache-Control "public, max-age=604800";
         access_log off;
     }
+
+   location /scripts/ {
+    root /var/projects/my-astro-frontend/dist/client;
+    expires 7d;
+    add_header Cache-Control "public, max-age=604800";
+}
+
     
     # Application routing
     location / {
