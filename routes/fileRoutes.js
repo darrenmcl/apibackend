@@ -98,8 +98,7 @@ router.post('/upload', auth, isAdmin, upload.single('file'), async (req, res) =>
             Bucket: BUCKET_NAME,
             Key: s3Key,
             Body: req.file.buffer,
-            ContentType: req.file.mimetype,
-            ACL: 'public-read'
+            ContentType: req.file.mimetype
         });
 
         // Send the command to S3

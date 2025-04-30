@@ -19,7 +19,9 @@ connectRabbit().catch(err =>
 );
 
 // --- Import Routes ---
+const adminRoutes = require('./routes/admin');
 const chatRoutes = require('./routes/chatRoutes');
+const sitemapRoutes = require('./routes/sitemap');
 const contactRoutes = require('./routes/contactRoutes');
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
@@ -75,6 +77,8 @@ app.use(express.urlencoded({ extended: true }));
 
 // --- API Routes ---
 logger.info('Mounting API routes...');
+app.use('/admin', adminRoutes);
+app.use('/sitemap', sitemapRoutes);
 app.use('/chat', chatRoutes);
 app.use('/contact', contactRoutes);
 app.use('/categories', categoryRoutes);
