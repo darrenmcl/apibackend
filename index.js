@@ -8,15 +8,9 @@ const cors = require('cors');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const logger = require('./lib/logger');
-const { connectRabbit } = require('./lib/rabbit');
 
 const app = express();
 const PORT = process.env.PORT || 3012;
-
-// Async RabbitMQ connection
-connectRabbit().catch(err =>
-  logger.error({ err }, "Initial RabbitMQ connection failed")
-);
 
 // --- Import Routes ---
 const adminRoutes = require('./routes/admin');

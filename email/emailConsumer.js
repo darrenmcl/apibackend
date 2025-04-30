@@ -1,74 +1,95 @@
 const amqp = require('amqplib');
 const AWS = require('aws-sdk');
 const logger = require('./lib/logger');
+const db = require('./config/db'); // Your PG pool/wrapper
 
-// Configure AWS SES
+// AWS SES config
 const ses = new AWS.SES({
   accessKeyId: process.env.EMAIL_AWS_ACCESS_KEY_ID,
   secretAccessKey: process.env.EMAIL_AWS_SECRET_ACCESS_KEY,
   region: process.env.EMAIL_AWS_REGION || 'us-east-1',
 });
 
+// Send email via SES
 async function sendEmail({ to, subject, html }) {
   const params = {
-    Source: process.env.ALERT_FROM_EMAIL, // verified sender
-    Destination: {
-      ToAddresses: [to || process.env.ALERT_TO_EMAIL],
-    },
+    Source: process.env.ALERT_FROM_EMAIL,
+    Destination: { ToAddresses: [to] },
     Message: {
       Subject: { Data: subject },
-      Body: {
-        Html: { Data: html },
-      },
+      Body: { Html: { Data: html } },
     },
   };
-
   return ses.sendEmail(params).promise();
+}
+
+// Log to email_logs
+async function logEmail({ to, subject, status, error = null }) {
+  try {
+    await db.query(
+      `INSERT INTO email_logs (to_address, subject, status, error)
+       VALUES ($1, $2, $3, $4)`,
+      [to, subject, status, error]
+    );
+    logger.info(`🗒️ Logged email (${status}) for: ${to}`);
+  } catch (err) {
+    logger.error('❌ Failed to log email to DB:', err.stack || err.message || err);
+  }
 }
 
 async function startConsumer() {
   try {
-    logger.info('Starting email consumer service');
+    logger.info('📨 Starting email consumer service');
 
     const connection = await amqp.connect({
       hostname: process.env.RABBITMQ_HOST || 'rabbitmq',
-      port: process.env.RABBITMQ_PORT || 5672,
+      port: parseInt(process.env.RABBITMQ_PORT || '5672'),
       username: process.env.RABBITMQ_USER || 'admin',
-      password: process.env.RABBITMQ_PASS || 'PCPLm4hnigq#2025'
+      password: process.env.RABBITMQ_PASS || 'PCPLm4hnigq#2025',
     });
 
     const channel = await connection.createChannel();
-    const queue = process.env.EMAIL_QUEUE || 'email_queue';
+    const queue = process.env.EMAIL_QUEUE || 'email_notifications';
 
     await channel.assertQueue(queue, { durable: true });
-    logger.info(`Waiting for messages in ${queue}`);
+    logger.info(`📡 Listening on queue: ${queue}`);
 
-channel.consume(queue, async (msg) => {
-  if (msg !== null) {
-    try {
-      logger.info(`📩 Message received from queue "${queue}": ${msg.content.toString()}`);
+    channel.consume(queue, async (msg) => {
+      if (msg !== null) {
+        let parsed;
+        try {
+          parsed = JSON.parse(msg.content.toString());
+          logger.info('📦 Message received:', parsed);
+        } catch (err) {
+          logger.error('❌ Invalid JSON:', err.stack || err.message || err);
+          channel.ack(msg);
+          return;
+        }
 
-      const { to, subject, html } = JSON.parse(msg.content.toString());
+        const { to, subject, html } = parsed;
 
-      if (!subject || !html) {
-        logger.warn('⚠️ Missing required email fields. Skipping message.');
-        return channel.ack(msg);
+        if (!subject || !html) {
+          logger.warn('⚠️ Missing required fields in message:', { subject, html });
+          await logEmail({ to: to || '(unknown)', subject: subject || '(none)', status: 'skipped', error: 'Missing subject or HTML' });
+          channel.ack(msg);
+          return;
+        }
+
+        try {
+          logger.info(`📩 Sending email to ${to} — Subject: "${subject}"`);
+          await sendEmail({ to, subject, html });
+          logger.info('✅ Email sent successfully');
+          await logEmail({ to, subject, status: 'sent' });
+        } catch (err) {
+          logger.error('❌ Failed to send email:', err.stack || err.message || err);
+          await logEmail({ to, subject, status: 'failed', error: err.message });
+        } finally {
+          channel.ack(msg);
+        }
       }
-
-      await sendEmail({ to, subject, html });
-
-      logger.info(`✅ Email sent successfully to ${to || '(default recipient)'} with subject: "${subject}"`);
-
-      channel.ack(msg);
-    } catch (err) {
-      logger.error('❌ Error processing email message:', err);
-      channel.ack(msg); // Or reject/requeue depending on your retry policy
-    }
-  }
-});
-
+    });
   } catch (err) {
-    logger.error('Error in email consumer startup:', err);
+    logger.error('💥 Consumer startup error:', err.stack || err.message || err);
     process.exit(1);
   }
 }
