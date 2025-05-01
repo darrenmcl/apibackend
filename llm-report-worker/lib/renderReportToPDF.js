@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const db = require('../config/db');
 
 /**
  * Renders a business report into a PDF buffer using Puppeteer and HTML template.
@@ -11,34 +12,52 @@ async function renderReportToPDF(data = {}) {
   const templatePath = path.join(__dirname, '../templates/report-template.html');
   let html = fs.readFileSync(templatePath, 'utf8');
 
-  // Remove duplicate title block from <header>
   html = html.replace(/<header class=".*?<\/header>/s, '');
 
-  // Insert updated hero section with cover image only once
   const headerVisual = `
-    <section class="mb-10 text-center">
-      <img src="https://assets.performancecorporate.com/uploads/1745426872792-Telehealth-Cover.svg" alt="Telehealth Header Image" class="mx-auto w-[80%] max-w-2xl h-auto rounded-lg shadow-md mb-4" />
-      <h1 class="text-3xl font-bold text-blue-700">HealthShift 2025</h1>
-      <p class="text-lg font-medium">Strategic Insights for Small Businesses in Healthcare and Telehealth</p>
-    </section>
+  <section class="mb-10 text-center">
+    <img src="${data.header_image_url}" alt="Report Banner" class="mx-auto w-[80%] max-w-2xl h-auto rounded-lg shadow-md mb-4" />
+    <h1 class="text-3xl font-bold text-blue-700">${data.report_title}</h1>
+    <p class="text-lg font-medium">${data.subtitle || ''}</p>
+  </section>
   `;
   html = html.replace('<body>', `<body>\n${headerVisual}`);
 
-  // Replace each placeholder with provided values
-  Object.entries(data).forEach(([key, value]) => {
-    const pattern = new RegExp(`{{\s*${key}\s*}}`, 'g');
-    const formattedValue = value ? value.split(/\n{2,}/g).map(paragraph => {
-      // Convert bullet points to unordered lists
-      if (paragraph.trim().startsWith('- ') || paragraph.trim().match(/^\d+\.\s/)) {
-        const listItems = paragraph.split(/\n/).map(line => `<li>${line.replace(/^[-\d.\s]+/, '').trim()}</li>`).join('');
-        return `<ul class="list-disc pl-6 mb-4">${listItems}</ul>`;
+  // Load prompts from the DB if product_id is passed
+  const prompts = {};
+  if (data.product_id) {
+    const result = await db.query(
+      'SELECT section_key, prompt_text FROM prompts WHERE product_id = $1 AND is_active = true',
+      [data.product_id]
+    );
+    for (const row of result.rows) {
+      let prompt = row.prompt_text;
+      for (const [token, value] of Object.entries(data)) {
+        prompt = prompt.replace(new RegExp(`{{\s*${token}\s*}}`, 'g'), value);
       }
-      return `<p class="mb-4">${paragraph.replace(/\n/g, '<br>')}</p>`;
-    }).join('\n') : '';
-    html = html.replace(pattern, formattedValue);
-  });
+      prompts[row.section_key] = prompt;
+    }
+  }
 
-  // Define clean section header replacements with matching icons
+  // Insert content into placeholders with formatting
+Object.entries(data).forEach(([key, value]) => {
+  const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+
+  const stringValue = typeof value === 'string' ? value : String(value ?? '');
+
+  const formattedValue = stringValue.split(/\n{2,}/g).map(paragraph => {
+    if (paragraph.trim().startsWith('- ') || /^\d+\.\s/.test(paragraph.trim())) {
+      const listItems = paragraph.split(/\n/).map(line =>
+        `<li>${line.replace(/^[-\d.\s]+/, '').trim()}</li>`).join('');
+      return `<ul class="list-disc pl-6 mb-4">${listItems}</ul>`;
+    }
+    return `<p class="mb-4">${paragraph.replace(/\n/g, '<br>')}</p>`;
+  }).join('\n');
+
+  html = html.replace(pattern, formattedValue);
+});
+
+
   const sectionIcons = {
     'Executive Summary': 'https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg',
     'Market Trends': 'https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg',
