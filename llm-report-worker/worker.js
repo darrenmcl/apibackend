@@ -33,25 +33,25 @@ const s3Client = new S3Client({
   },
 });
 
-async function fetchPrompts(productId, context = {}) {
-  const result = await db.query(
-    'SELECT section_key, prompt_text FROM prompts WHERE product_id = $1 AND is_active = true',
-    [productId]
-  );
+const result = await db.query(
+  'SELECT section_key, prompt_text, llm_model FROM prompts WHERE product_id = $1 AND is_active = true',
+  [productId]
+);
 
-  const prompts = {};
-  for (const row of result.rows) {
-    let prompt = row.prompt_text;
-    for (const [key, value] of Object.entries(context)) {
-      prompt = prompt.replace(new RegExp(`{{\s*${key}\s*}}`, 'g'), value);
-    }
-    prompts[row.section_key] = prompt;
+const prompts = {};
+for (const row of result.rows) {
+  let prompt = row.prompt_text;
+  for (const [key, value] of Object.entries(context)) {
+    prompt = prompt.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), value);
   }
-  return prompts;
+
+  prompts[row.section_key] = {
+    text: prompt,
+    model: row.llm_model || 'openai/gpt-4-turbo', // fallback model
+  };
 }
 
-async function callLLM(prompt) {
-  const model = 'openai/gpt-3.5-turbo';
+async function callLLM(prompt, model = 'openai/gpt-4-turbo') {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -60,7 +60,10 @@ async function callLLM(prompt) {
       ...(YOUR_SITE_URL && { 'HTTP-Referer': YOUR_SITE_URL }),
       ...(YOUR_SITE_NAME && { 'X-Title': YOUR_SITE_NAME }),
     },
-    body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }] }),
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+    }),
   });
 
   const data = await response.json();
@@ -99,21 +102,24 @@ async function runWorker() {
 
         // Fetch dynamic report title and header image
         const productMeta = await db.query(
-          'SELECT report_title, header_image_url FROM products WHERE id = $1',
-          [jobData.productId]
+        'SELECT report_title, header_image_url FROM product_metadata WHERE product_id = $1',
+        [jobData.productId]
         );
 
         if (productMeta.rows.length > 0) {
-          context.report_title = productMeta.rows[0].report_title;
-          context.header_image_url = productMeta.rows[0].header_image_url;
+        context.report_title = productMeta.rows[0].report_title;
+        context.report_subtitle = productMeta.rows[0].report_subtitle || 'Strategic Insights for Growth';
+        context.header_image_url = productMeta.rows[0].header_image_url;
+        } else {
+        logger.warn(`[Worker] No product metadata found for productId ${jobData.productId}`);
         }
 
         const prompts = await fetchPrompts(jobData.productId, context);
 
         const sectionResults = {};
-        for (const [section, prompt] of Object.entries(prompts)) {
-          logger.info(`[Worker] Fetching section: ${section}`);
-          sectionResults[section] = await callLLM(prompt);
+        for (const [section, { text, model }] of Object.entries(prompts)) {
+        logger.info(`[Worker] Fetching section: ${section} using ${model}`);
+        sectionResults[section] = await callLLM(text, model);
         }
 
         const pdfBuffer = await renderReportToPDF({
