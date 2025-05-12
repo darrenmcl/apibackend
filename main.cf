@@ -1,0 +1,99 @@
+# Basic settings
+myhostname = cp.advancedcloudstaging.com
+mydomain = advancedcloudstaging.com
+myorigin = $mydomain
+mydestination = localhost
+
+# Network settings
+inet_interfaces = all
+inet_protocols = all
+mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128
+# Add your VPN network range if needed, e.g.: 192.168.0.0/24
+
+# AWS SES relay
+relayhost = [email-smtp.us-west-2.amazonaws.com]:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_security_options = noanonymous
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_use_tls = yes
+smtp_tls_security_level = encrypt
+smtp_tls_note_starttls_offer = yes
+
+# Relay and recipient restrictions (required to fix your error)
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_recipient_restrictions = 
+    permit_mynetworks,
+    permit_sasl_authenticated, 
+    reject_unauth_destination,
+    reject_non_fqdn_recipient,
+    reject_unknown_recipient_domain
+
+# Sender restrictions (recommended)
+smtpd_sender_restrictions = 
+    reject_non_fqdn_sender,
+    reject_unknown_sender_domain
+
+# SMTP Authentication for incoming mail (if needed)
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain = $myhostname
+
+# TLS for incoming connections
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
+
+# Fix NIS warning
+disable_vrfy_command = yes
+
+# Performance and resource settings
+mailbox_size_limit = 0
+recipient_delimiter = +
+inet_protocols = all
+compatibility_level = 3.6
+
+# Log settings
+debug_peer_level = 2
+debugger_command =
+    PATH=/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin
+    ddd $daemon_directory/$process_name $process_id & sleep 5
+
+# Local mail delivery
+home_mailbox = Maildir/
+
+#Virtualdomains 
+# Virtual domain, user, and alias maps
+virtual_mailbox_domains = pgsql:/etc/postfix/pgsql-virtual-domains.cf
+virtual_mailbox_maps = pgsql:/etc/postfix/pgsql-virtual-users.cf
+virtual_alias_maps = pgsql:/etc/postfix/pgsql-virtual-aliases.cf
+
+# Virtual mailbox base directory
+virtual_mailbox_base = /var/mail/vhosts
+virtual_minimum_uid = 100
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
+
+# Dovecot LDA
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+
+#Certs
+
+# TLS parameters
+# TLS parameters
+smtpd_tls_cert_file = /etc/letsencrypt/live/cp.advancedcloudstaging.com/fullchain.pem
+smtpd_tls_key_file = /etc/letsencrypt/live/cp.advancedcloudstaging.com/privkey.pem
+smtpd_tls_security_level = may
+smtpd_tls_loglevel = 1
+smtpd_tls_received_header = yes
+smtpd_use_tls = yes
+smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+
+# Outbound TLS settings (for communication with other mail servers)
+smtp_tls_loglevel = 1
+# Enable SMTP authentication for submission (port 587)
+smtpd_sasl_auth_enable = yes
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_local_domain = $myhostname
+alias_maps = hash:/etc/aliases

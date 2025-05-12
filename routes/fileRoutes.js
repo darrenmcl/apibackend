@@ -1,10 +1,11 @@
 // /var/projects/backend-api/routes/fileRoutes.js
-// --- FULLY REVISED VERSION ---
+// --- FULLY REVISED VERSION WITH IMAGE OPTIMIZATION ---
 
 const express = require('express');
 const router = express.Router();
 const path = require('path');
 const logger = require('../lib/logger');
+const sharp = require('sharp'); // Add Sharp for image processing
 
 logger.info('--- fileRoutes.js Loading ---');
 
@@ -67,6 +68,106 @@ function checkS3Config(res) {
     return true;
 }
 
+// Check if file is an image based on mimetype
+function isImage(mimetype) {
+    return mimetype && mimetype.startsWith('image/');
+}
+
+// Generate file versions and upload to S3
+async function processAndUploadImage(fileBuffer, originalKey, mimetype) {
+    const results = {
+        original: {
+            key: originalKey,
+            url: `${ASSET_BASE_URL}/${originalKey}`
+        }
+    };
+    
+    // Only process images
+    if (!isImage(mimetype)) {
+        // Just upload the original if not an image
+        await s3Client.send(new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: originalKey,
+            Body: fileBuffer,
+            ContentType: mimetype,
+            CacheControl: 'public, max-age=31536000' // Cache for 1 year
+        }));
+        
+        return results;
+    }
+    
+    // Extract name parts for creating variant filenames
+    const basePath = path.dirname(originalKey);
+    const extension = path.extname(originalKey);
+    const filename = path.basename(originalKey, extension);
+    
+    // Create image processor
+    const imageProcessor = sharp(fileBuffer);
+    
+    // Get image metadata
+    const metadata = await imageProcessor.metadata();
+    logger.debug({ width: metadata.width, height: metadata.height, format: metadata.format }, 'Image metadata');
+    
+    try {
+        // Upload original image
+        await s3Client.send(new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: originalKey,
+            Body: fileBuffer,
+            ContentType: mimetype,
+            CacheControl: 'public, max-age=31536000' // Cache for 1 year
+        }));
+        
+        // Generate and upload WebP version
+        const webpKey = `${basePath}/${filename}.webp`;
+        const webpBuffer = await sharp(fileBuffer)
+            .webp({ quality: 80 })
+            .toBuffer();
+        
+        await s3Client.send(new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: webpKey,
+            Body: webpBuffer,
+            ContentType: 'image/webp',
+            CacheControl: 'public, max-age=31536000'
+        }));
+        
+        results.webp = {
+            key: webpKey,
+            url: `${ASSET_BASE_URL}/${webpKey}`
+        };
+        
+        // Generate and upload AVIF version
+        try {
+            const avifKey = `${basePath}/${filename}.avif`;
+            const avifBuffer = await sharp(fileBuffer)
+                .avif({ quality: 65 })
+                .toBuffer();
+            
+            await s3Client.send(new PutObjectCommand({
+                Bucket: BUCKET_NAME,
+                Key: avifKey,
+                Body: avifBuffer,
+                ContentType: 'image/avif',
+                CacheControl: 'public, max-age=31536000'
+            }));
+            
+            results.avif = {
+                key: avifKey,
+                url: `${ASSET_BASE_URL}/${avifKey}`
+            };
+        } catch (avifError) {
+            // AVIF might not be supported in this Sharp version
+            logger.warn({ err: avifError }, 'AVIF conversion failed, skipping');
+        }
+        
+        return results;
+    } catch (error) {
+        logger.error({ err: error }, 'Image processing error');
+        throw error;
+    }
+}
+
 // --- ROUTES ---
 
 // POST /files/upload (Admin Only)
@@ -90,37 +191,26 @@ router.post('/upload', auth, isAdmin, upload.single('file'), async (req, res) =>
             bucket: BUCKET_NAME,
             key: s3Key,
             contentType: req.file.mimetype,
-            size: req.file.size
-        }, 'Uploading file to S3');
+            size: req.file.size,
+            isImage: isImage(req.file.mimetype)
+        }, 'Processing and uploading file to S3');
 
-        // Prepare the S3 PutObject command
-        const command = new PutObjectCommand({
-            Bucket: BUCKET_NAME,
-            Key: s3Key,
-            Body: req.file.buffer,
-            ContentType: req.file.mimetype
-        });
+        // Process and upload the file (generating variants if it's an image)
+        const uploadResults = await processAndUploadImage(
+            req.file.buffer, 
+            s3Key, 
+            req.file.mimetype
+        );
 
-        // Send the command to S3
-        const s3Response = await s3Client.send(command);
+        logger.info({ results: uploadResults }, 'File and variants uploaded successfully to S3');
 
-        // Check S3 response metadata for success
-        if (s3Response.$metadata.httpStatusCode !== 200) {
-            logger.error({ response: s3Response }, 'S3 upload failed with non-200 status');
-            throw new Error('Failed to upload file to storage service.');
-        }
-
-        logger.info({ key: s3Key }, 'File uploaded successfully to S3');
-
-        // Construct the final public URL
-        const finalUrl = `${ASSET_BASE_URL}/${s3Key}`;
-
-        // Send success response
+        // Send success response with all image variants
         res.status(201).json({
             message: 'File uploaded successfully',
             filename: req.file.originalname,
             key: s3Key,
-            url: finalUrl,
+            url: uploadResults.original.url,
+            variants: uploadResults,
             mimetype: req.file.mimetype,
             size: req.file.size
         });
@@ -134,6 +224,7 @@ router.post('/upload', auth, isAdmin, upload.single('file'), async (req, res) =>
     }
 });
 
+// Rest of the routes remain the same
 // GET /files - List files (from S3) - Admin Only
 router.get('/', auth, isAdmin, async (req, res) => {
     // Validate S3 configuration
@@ -157,8 +248,8 @@ router.get('/', auth, isAdmin, async (req, res) => {
                 const key = item.Key;
                 const filename = key.substring(key.lastIndexOf('/') + 1);
 
-                // Filter out directory placeholders
-                if (!filename || key.endsWith('/')) {
+                // Filter out directory placeholders and alternative formats
+                if (!filename || key.endsWith('/') || key.endsWith('.webp') || key.endsWith('.avif')) {
                     return null;
                 }
 
@@ -167,7 +258,12 @@ router.get('/', auth, isAdmin, async (req, res) => {
                     filename: filename,
                     url: `${ASSET_BASE_URL}/${key}`,
                     size: item.Size,
-                    lastModified: item.LastModified
+                    lastModified: item.LastModified,
+                    variants: {
+                        original: `${ASSET_BASE_URL}/${key}`,
+                        webp: `${ASSET_BASE_URL}/${key.substring(0, key.lastIndexOf('.'))}.webp`,
+                        avif: `${ASSET_BASE_URL}/${key.substring(0, key.lastIndexOf('.'))}.avif`
+                    }
                 };
             })
             .filter(file => file !== null) // Remove null entries
@@ -194,7 +290,7 @@ router.get('/', auth, isAdmin, async (req, res) => {
     }
 });
 
-// In your fileRoutes.js
+// In your fileRoutes.js - Enhanced to also delete variant formats
 router.delete('/:key(*)', auth, isAdmin, async (req, res) => {
   const fileKey = req.params.key;
   
@@ -207,15 +303,41 @@ router.delete('/:key(*)', auth, isAdmin, async (req, res) => {
   }
   
   try {
-    const command = new DeleteObjectCommand({
+    // Delete the original file
+    await s3Client.send(new DeleteObjectCommand({
       Bucket: BUCKET_NAME,
       Key: fileKey,
-    });
+    }));
     
-    await s3Client.send(command);
+    // Also try to delete any variant formats
+    const basePath = path.dirname(fileKey);
+    const extension = path.extname(fileKey);
+    const filename = path.basename(fileKey, extension);
+    
+    // Try to delete WebP version (if exists)
+    try {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: `${basePath}/${filename}.webp`,
+      }));
+      logger.info(`Deleted WebP version of ${fileKey}`);
+    } catch (webpError) {
+      logger.debug({ err: webpError }, 'WebP version not found or other error');
+    }
+    
+    // Try to delete AVIF version (if exists)
+    try {
+      await s3Client.send(new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: `${basePath}/${filename}.avif`,
+      }));
+      logger.info(`Deleted AVIF version of ${fileKey}`);
+    } catch (avifError) {
+      logger.debug({ err: avifError }, 'AVIF version not found or other error');
+    }
     
     return res.status(200).json({ 
-      message: 'File deleted successfully.', 
+      message: 'File and its variants deleted successfully.', 
       key: fileKey 
     });
     
@@ -227,4 +349,5 @@ router.delete('/:key(*)', auth, isAdmin, async (req, res) => {
     });
   }
 });
+
 module.exports = router;

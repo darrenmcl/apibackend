@@ -5,7 +5,6 @@ const db = require('./config/db');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { v4: uuidv4 } = require('uuid');
 const renderReportToPDF = require('./lib/renderReportToPDF');
-
 const fetch = globalThis.fetch || require('node-fetch');
 
 const RABBITMQ_HOST = process.env.RABBITMQ_HOST || 'rabbitmq';
@@ -19,6 +18,13 @@ const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const YOUR_SITE_URL = process.env.YOUR_SITE_URL || '';
 const YOUR_SITE_NAME = process.env.YOUR_SITE_NAME || 'PMG Research';
+const SYSTEM_PROMPT = {
+  role: 'system',
+  content:
+    'You are a senior-level business analyst or strategist writing high-quality report sections for paying clients. Your writing should be structured, insightful, and easy to follow. Use plain business English, avoid fluff, and match the tone to small business owners, consultants, or startup founders in healthcare-related industries. Stay objective, confident, and useful.'
+};
+
+
 
 if (!S3_BUCKET_NAME || !AWS_REGION || !OPENROUTER_API_KEY) {
   logger.fatal('Missing required environment variables.');
@@ -33,22 +39,26 @@ const s3Client = new S3Client({
   },
 });
 
-const result = await db.query(
-  'SELECT section_key, prompt_text, llm_model FROM prompts WHERE product_id = $1 AND is_active = true',
-  [productId]
-);
+async function fetchPrompts(productId, context = {}) {
+  const result = await db.query(
+    'SELECT section_key, prompt_text, llm_model FROM prompts WHERE product_id = $1 AND is_active = true',
+    [productId]
+  );
 
-const prompts = {};
-for (const row of result.rows) {
-  let prompt = row.prompt_text;
-  for (const [key, value] of Object.entries(context)) {
-    prompt = prompt.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), value);
+  const prompts = {};
+  for (const row of result.rows) {
+    let prompt = row.prompt_text;
+    for (const [key, value] of Object.entries(context)) {
+      prompt = prompt.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), value);
+    }
+
+    prompts[row.section_key] = {
+      text: prompt,
+      model: row.llm_model || 'openai/gpt-4-turbo', // fallback model
+    };
   }
 
-  prompts[row.section_key] = {
-    text: prompt,
-    model: row.llm_model || 'openai/gpt-4-turbo', // fallback model
-  };
+  return prompts;
 }
 
 async function callLLM(prompt, model = 'openai/gpt-4-turbo') {
@@ -62,7 +72,7 @@ async function callLLM(prompt, model = 'openai/gpt-4-turbo') {
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: 'user', content: prompt }],
+      messages: [SYSTEM_PROMPT, { role: 'user', content: prompt }],
     }),
   });
 
@@ -102,24 +112,24 @@ async function runWorker() {
 
         // Fetch dynamic report title and header image
         const productMeta = await db.query(
-        'SELECT report_title, header_image_url FROM product_metadata WHERE product_id = $1',
-        [jobData.productId]
+          'SELECT report_title, header_image_url, report_subtitle FROM product_metadata WHERE product_id = $1',
+          [jobData.productId]
         );
 
         if (productMeta.rows.length > 0) {
-        context.report_title = productMeta.rows[0].report_title;
-        context.report_subtitle = productMeta.rows[0].report_subtitle || 'Strategic Insights for Growth';
-        context.header_image_url = productMeta.rows[0].header_image_url;
+          context.report_title = productMeta.rows[0].report_title;
+          context.report_subtitle = productMeta.rows[0].report_subtitle || 'Strategic Insights for Growth';
+          context.header_image_url = productMeta.rows[0].header_image_url;
         } else {
-        logger.warn(`[Worker] No product metadata found for productId ${jobData.productId}`);
+          logger.warn(`[Worker] No product metadata found for productId ${jobData.productId}`);
         }
 
         const prompts = await fetchPrompts(jobData.productId, context);
 
         const sectionResults = {};
         for (const [section, { text, model }] of Object.entries(prompts)) {
-        logger.info(`[Worker] Fetching section: ${section} using ${model}`);
-        sectionResults[section] = await callLLM(text, model);
+          logger.info(`[Worker] Fetching section: ${section} using ${model}`);
+          sectionResults[section] = await callLLM(text, model);
         }
 
         const pdfBuffer = await renderReportToPDF({
