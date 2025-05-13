@@ -62,7 +62,7 @@ router.get('/', async (req, res) => {
         // Base query includes join and categorySlug selection
         let query = `
             SELECT
-                p.id, p.name, p.description, p.price, p.image, p.featured,
+                p.id, p.name, p.description, p.short_description, p.price, p.image, p.featured,
                 p.created_at, p.updated_at,
                 p.slug,
                 p.category_id,
@@ -120,7 +120,7 @@ router.get('/slug/:slug', async (req, res) => {
 
         // Query is correct (includes JOIN and categorySlug)
         const query = `
-            SELECT p.id, p.name, p.description, p.price, p.image, p.featured,
+            SELECT p.id, p.name, p.description, p.short_description, p.price, p.image, p.featured,
                    p.created_at, p.updated_at, p.slug,
                    p.category_id, c.slug AS "categorySlug"
             FROM products p
@@ -174,7 +174,7 @@ router.get('/:id(\\d+)', async (req, res) => {
         // *** MODIFIED QUERY: Added LEFT JOIN and selected category_slug ***
         const query = `
             SELECT
-                p.id, p.name, p.description, p.price, p.image, p.featured,
+                p.id, p.name, p.description, p.short_description, p.price, p.image, p.featured,
                 p.created_at, p.updated_at,
                 p.slug,
                 p.category_id,
@@ -217,7 +217,7 @@ router.post('/', auth, isAdmin, async (req, res) => {
     console.log(`[${requestStartTime}] [POST /products] Request received.`);
     try {
         // *** ADDED: category_id from body ***
-        const { name, description, price, image, featured, category_id } = req.body;
+        const { name, description, short_description, price, image, featured, category_id } = req.body;
 
         // --- Basic validation ---
         if (!name || typeof name !== 'string' || name.trim() === '' || price === undefined || price === null) {
@@ -254,7 +254,7 @@ router.post('/', auth, isAdmin, async (req, res) => {
         // --- Insert into DB ---
         // *** MODIFIED: Added category_id column and parameter $7 ***
         const result = await db.query(
-            'INSERT INTO products (name, description, price, image, featured, slug, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+            'INSERT INTO products (name, description, short_description, price, image, featured, slug, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
             // *** MODIFIED: Added categoryIdValue ***
             [name.trim(), description || null, numericPrice, imageValue, featuredValue, slug, categoryIdValue] // Use null for category_id if not provided
         );
@@ -289,9 +289,8 @@ router.put('/:id(\\d+)', auth, isAdmin, async (req, res) => {
     console.log(`[${requestStartTime}] [PUT /products/:id] Received req.body:`, req.body);
     // ***************************************
 
-    // Get expected fields from body
-    const { name, description, price, image, featured, category_id } = req.body;
-
+     // Get expected fields from body
+    const { name, description, short_description, price, image, featured, category_id } = req.body;
     console.log(`[${requestStartTime}] [PUT /products/:id] Request processing for ID: ${id}`);
 
     // Validate ID
@@ -331,7 +330,13 @@ router.put('/:id(\\d+)', auth, isAdmin, async (req, res) => {
             updateFields.push(`price = $${paramIndex++}`);
             values.push(numericPrice);
         }
-        if (image !== undefined) {
+
+       if (short_description !== undefined) {
+       updateFields.push(`short_description = $${paramIndex++}`);
+       values.push(short_description ?? null);
+       }
+
+       if (image !== undefined) {
             const imageValue = (image && typeof image === 'string' && image.trim() !== '') ? image.trim() : null;
             updateFields.push(`image = $${paramIndex++}`);
             values.push(imageValue);

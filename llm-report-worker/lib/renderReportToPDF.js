@@ -9,8 +9,16 @@ const db = require('../config/db');
  * @returns {Buffer} - PDF buffer ready for upload or saving.
  */
 async function renderReportToPDF(data = {}) {
-  const templatePath = path.join(__dirname, '../templates/report-template.html');
-  let html = fs.readFileSync(templatePath, 'utf8');
+  const templateName = data.template_file || 'report-template-default.html';
+  const templatePath = path.join(__dirname, '../templates', templateName);
+
+// Handle fallback if file doesn't exist
+if (!fs.existsSync(templatePath)) {
+  throw new Error(`Template "${templateName}" not found in /templates`);
+}
+
+let html = fs.readFileSync(templatePath, 'utf8');
+
 
   html = html.replace(/<header class=".*?<\/header>/s, '');
 

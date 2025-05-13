@@ -39,29 +39,34 @@ const s3Client = new S3Client({
   },
 });
 
-async function fetchPrompts(productId, context = {}) {
-  const result = await db.query(
-    'SELECT section_key, prompt_text, llm_model FROM prompts WHERE product_id = $1 AND is_active = true',
-    [productId]
-  );
+const result = await db.query(
+  'SELECT section_key, prompt_text, llm_model, system_message FROM prompts WHERE product_id = $1 AND is_active = true',
+  [productId]
+);
 
-  const prompts = {};
-  for (const row of result.rows) {
-    let prompt = row.prompt_text;
-    for (const [key, value] of Object.entries(context)) {
-      prompt = prompt.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), value);
-    }
-
-    prompts[row.section_key] = {
-      text: prompt,
-      model: row.llm_model || 'openai/gpt-4-turbo', // fallback model
-    };
+const prompts = {};
+for (const row of result.rows) {
+  let prompt = row.prompt_text;
+  for (const [key, value] of Object.entries(context)) {
+    prompt = prompt.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), value);
   }
 
-  return prompts;
+  prompts[row.section_key] = {
+    text: prompt,
+    model: row.llm_model || 'openai/gpt-4-turbo',
+    systemMessage: row.system_message || null,
+  };
 }
 
-async function callLLM(prompt, model = 'openai/gpt-4-turbo') {
+async function callLLM(prompt, model = 'openai/gpt-4-turbo', systemMessage = null) {
+  const messages = [];
+
+  if (systemMessage) {
+    messages.push({ role: 'system', content: systemMessage });
+  }
+
+  messages.push({ role: 'user', content: prompt });
+
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -70,15 +75,13 @@ async function callLLM(prompt, model = 'openai/gpt-4-turbo') {
       ...(YOUR_SITE_URL && { 'HTTP-Referer': YOUR_SITE_URL }),
       ...(YOUR_SITE_NAME && { 'X-Title': YOUR_SITE_NAME }),
     },
-    body: JSON.stringify({
-      model,
-      messages: [SYSTEM_PROMPT, { role: 'user', content: prompt }],
-    }),
+    body: JSON.stringify({ model, messages }),
   });
 
   const data = await response.json();
   return data.choices?.[0]?.message?.content || '';
 }
+
 
 async function runWorker() {
   const connection = await amqp.connect({
@@ -111,26 +114,29 @@ async function runWorker() {
         };
 
         // Fetch dynamic report title and header image
-        const productMeta = await db.query(
-          'SELECT report_title, header_image_url, report_subtitle FROM product_metadata WHERE product_id = $1',
-          [jobData.productId]
-        );
+const productMeta = await db.query(
+  'SELECT report_title, header_image_url, template_file FROM products WHERE id = $1',
+  [jobData.productId]
+);
 
-        if (productMeta.rows.length > 0) {
-          context.report_title = productMeta.rows[0].report_title;
-          context.report_subtitle = productMeta.rows[0].report_subtitle || 'Strategic Insights for Growth';
-          context.header_image_url = productMeta.rows[0].header_image_url;
-        } else {
-          logger.warn(`[Worker] No product metadata found for productId ${jobData.productId}`);
-        }
+if (productMeta.rows.length > 0) {
+  context.report_title = productMeta.rows[0].report_title;
+  context.report_subtitle = productMeta.rows[0].report_subtitle || 'Strategic Insights for Growth';
+  context.header_image_url = productMeta.rows[0].header_image_url;
+  context.template_file = productMeta.rows[0].template_file || 'report-template-default.html';
+} else {
+  logger.warn(`[Worker] No product metadata found for productId ${jobData.productId}`);
+}
+
 
         const prompts = await fetchPrompts(jobData.productId, context);
 
         const sectionResults = {};
-        for (const [section, { text, model }] of Object.entries(prompts)) {
-          logger.info(`[Worker] Fetching section: ${section} using ${model}`);
-          sectionResults[section] = await callLLM(text, model);
-        }
+	for (const [section, { text, model, systemMessage }] of Object.entries(prompts)) {
+  	logger.info(`[Worker] Fetching section: ${section} using ${model}`);
+  	sectionResults[section] = await callLLM(text, model, systemMessage);
+	}
+
 
         const pdfBuffer = await renderReportToPDF({
           ...context,
