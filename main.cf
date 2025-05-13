@@ -10,23 +10,31 @@ inet_protocols = all
 mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128
 # Add your VPN network range if needed, e.g.: 192.168.0.0/24
 
-# AWS SES relay
-relayhost = [email-smtp.us-west-2.amazonaws.com]:587
-smtp_sasl_auth_enable = yes
-smtp_sasl_security_options = noanonymous
-smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_use_tls = yes
-smtp_tls_security_level = encrypt
-smtp_tls_note_starttls_offer = yes
+# Milter (OpenDKIM) configuration
+# OpenDKIM
+milter_protocol = 2
+milter_default_action = accept
+smtpd_milters = local:opendkim/opendkim.sock
+non_smtpd_milters = local:opendkim/opendkim.sock
+
+# MailBaby relay
+# Mail.baby relay configuration
+    relayhost = relay.mailbaby.net:25
+    smtp_sasl_auth_enable = yes
+    smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+    smtp_sasl_security_options = noanonymous
+    smtpd_sasl_authenticated_header = yes
+    smtp_tls_security_level = encrypt
+    smtp_header_checks = regexp:/etc/postfix/header_custom
 
 # Relay and recipient restrictions (required to fix your error)
 smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+# Recipient restrictions
 smtpd_recipient_restrictions = 
     permit_mynetworks,
-    permit_sasl_authenticated, 
-    reject_unauth_destination,
-    reject_non_fqdn_recipient,
-    reject_unknown_recipient_domain
+    permit_sasl_authenticated,
+    reject_unauth_destination
+
 
 # Sender restrictions (recommended)
 smtpd_sender_restrictions = 
@@ -75,10 +83,7 @@ virtual_gid_maps = static:5000
 # Dovecot LDA
 virtual_transport = lmtp:unix:private/dovecot-lmtp
 
-#Certs
-
-# TLS parameters
-# TLS parameters
+# TLS parameters for incoming connections
 smtpd_tls_cert_file = /etc/letsencrypt/live/cp.advancedcloudstaging.com/fullchain.pem
 smtpd_tls_key_file = /etc/letsencrypt/live/cp.advancedcloudstaging.com/privkey.pem
 smtpd_tls_security_level = may
@@ -86,14 +91,38 @@ smtpd_tls_loglevel = 1
 smtpd_tls_received_header = yes
 smtpd_use_tls = yes
 smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
-smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 
-# Outbound TLS settings (for communication with other mail servers)
+# TLS parameters for outgoing connections
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 smtp_tls_loglevel = 1
-# Enable SMTP authentication for submission (port 587)
+smtp_tls_security_level = encrypt  # Moved from below to keep outbound settings together
+
+# SASL Authentication for incoming mail (submission port)
 smtpd_sasl_auth_enable = yes
 smtpd_sasl_type = dovecot
 smtpd_sasl_path = private/auth
 smtpd_sasl_security_options = noanonymous
 smtpd_sasl_local_domain = $myhostname
+smtpd_sasl_authenticated_header = yes  # Moved from below to consolidate SASL settings
+
+# Alias configuration
 alias_maps = hash:/etc/aliases
+
+# OpenDKIM Configuration
+milter_protocol = 2
+milter_default_action = accept
+smtpd_milters = local:opendkim/opendkim.sock
+non_smtpd_milters = local:opendkim/opendkim.sock
+
+# Mail Relay Configuration (Mail.baby)
+relayhost = relay.mailbaby.net:25
+smtp_sasl_auth_enable = yes  # This is already set above, but keeping for clarity
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous  # This is already set above, but keeping for clarity
+
+# Custom headers
+smtp_header_checks = regexp:/etc/postfix/header_custom
+
+# Recipient and relay restrictions (adding these for better security)
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
