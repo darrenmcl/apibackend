@@ -8,80 +8,7 @@ mydestination = localhost
 inet_interfaces = all
 inet_protocols = all
 mynetworks = 127.0.0.0/8 [::ffff:127.0.0.0]/104 [::1]/128
-# Add your VPN network range if needed, e.g.: 192.168.0.0/24
-
-# Milter (OpenDKIM) configuration
-# OpenDKIM
-milter_protocol = 2
-milter_default_action = accept
-smtpd_milters = local:opendkim/opendkim.sock
-non_smtpd_milters = local:opendkim/opendkim.sock
-
-# MailBaby relay
-# Mail.baby relay configuration
-    relayhost = relay.mailbaby.net:25
-    smtp_sasl_auth_enable = yes
-    smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-    smtp_sasl_security_options = noanonymous
-    smtpd_sasl_authenticated_header = yes
-    smtp_tls_security_level = encrypt
-    smtp_header_checks = regexp:/etc/postfix/header_custom
-
-# Relay and recipient restrictions (required to fix your error)
-smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
-# Recipient restrictions
-smtpd_recipient_restrictions = 
-    permit_mynetworks,
-    permit_sasl_authenticated,
-    reject_unauth_destination
-
-
-# Sender restrictions (recommended)
-smtpd_sender_restrictions = 
-    reject_non_fqdn_sender,
-    reject_unknown_sender_domain
-
-# SMTP Authentication for incoming mail (if needed)
-smtpd_sasl_auth_enable = yes
-smtpd_sasl_security_options = noanonymous
-smtpd_sasl_local_domain = $myhostname
-
-# TLS for incoming connections
-smtpd_tls_security_level = may
-smtpd_tls_auth_only = yes
-
-# Fix NIS warning
-disable_vrfy_command = yes
-
-# Performance and resource settings
-mailbox_size_limit = 0
-recipient_delimiter = +
-inet_protocols = all
 compatibility_level = 3.6
-
-# Log settings
-debug_peer_level = 2
-debugger_command =
-    PATH=/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin
-    ddd $daemon_directory/$process_name $process_id & sleep 5
-
-# Local mail delivery
-home_mailbox = Maildir/
-
-#Virtualdomains 
-# Virtual domain, user, and alias maps
-virtual_mailbox_domains = pgsql:/etc/postfix/pgsql-virtual-domains.cf
-virtual_mailbox_maps = pgsql:/etc/postfix/pgsql-virtual-users.cf
-virtual_alias_maps = pgsql:/etc/postfix/pgsql-virtual-aliases.cf
-
-# Virtual mailbox base directory
-virtual_mailbox_base = /var/mail/vhosts
-virtual_minimum_uid = 100
-virtual_uid_maps = static:5000
-virtual_gid_maps = static:5000
-
-# Dovecot LDA
-virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 # TLS parameters for incoming connections
 smtpd_tls_cert_file = /etc/letsencrypt/live/cp.advancedcloudstaging.com/fullchain.pem
@@ -91,38 +18,61 @@ smtpd_tls_loglevel = 1
 smtpd_tls_received_header = yes
 smtpd_use_tls = yes
 smtpd_tls_session_cache_database = btree:${data_directory}/smtpd_scache
+smtpd_tls_auth_only = yes
 
 # TLS parameters for outgoing connections
 smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 smtp_tls_loglevel = 1
-smtp_tls_security_level = encrypt  # Moved from below to keep outbound settings together
+smtp_tls_security_level = encrypt
 
-# SASL Authentication for incoming mail (submission port)
+# SASL Authentication for incoming mail
 smtpd_sasl_auth_enable = yes
 smtpd_sasl_type = dovecot
 smtpd_sasl_path = private/auth
 smtpd_sasl_security_options = noanonymous
 smtpd_sasl_local_domain = $myhostname
-smtpd_sasl_authenticated_header = yes  # Moved from below to consolidate SASL settings
+
+# Mail Relay Configuration (Mail.baby)
+# AWS SES Configuration
+relayhost = [email-smtp.us-west-2.amazonaws.com]:465
+
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+
+smtp_use_tls = yes
+smtp_tls_wrappermode = yes         # Needed for port 465
+smtp_tls_note_starttls_offer = no  # Disable STARTTLS note since 465 uses implicit TLS
+
+# Access restrictions
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_sender_restrictions = reject_non_fqdn_sender, reject_unknown_sender_domain
+
+# Milter (OpenDKIM) configuration
+
+# Virtual domain configuration
+virtual_mailbox_domains = pgsql:/etc/postfix/pgsql-virtual-domains.cf
+virtual_mailbox_maps = pgsql:/etc/postfix/pgsql-virtual-users.cf
+virtual_alias_maps = pgsql:/etc/postfix/pgsql-virtual-aliases.cf
+virtual_mailbox_base = /var/mail/vhosts
+virtual_minimum_uid = 100
+virtual_uid_maps = static:5000
+virtual_gid_maps = static:5000
+virtual_transport = lmtp:unix:private/dovecot-lmtp
 
 # Alias configuration
 alias_maps = hash:/etc/aliases
 
-# OpenDKIM Configuration
-milter_protocol = 2
-milter_default_action = accept
-smtpd_milters = local:opendkim/opendkim.sock
-non_smtpd_milters = local:opendkim/opendkim.sock
+# Performance and resource settings
+mailbox_size_limit = 0
+recipient_delimiter = +
+home_mailbox = Maildir/
 
-# Mail Relay Configuration (Mail.baby)
-relayhost = relay.mailbaby.net:25
-smtp_sasl_auth_enable = yes  # This is already set above, but keeping for clarity
-smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
-smtp_sasl_security_options = noanonymous  # This is already set above, but keeping for clarity
+# Security settings
+disable_vrfy_command = yes
 
-# Custom headers
-smtp_header_checks = regexp:/etc/postfix/header_custom
-
-# Recipient and relay restrictions (adding these for better security)
-smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
-smtpd_recipient_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+# Logging configuration
+debug_peer_level = 2
+debugger_command = PATH=/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin ddd $daemon_directory/$process_name $process_id & sleep 5
+smtp_tls_CAfile = /etc/ssl/certs/ca-bundle.crt

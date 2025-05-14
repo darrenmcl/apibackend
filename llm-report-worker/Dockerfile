@@ -3,7 +3,7 @@ FROM node:18-slim
 
 # Set working directory
 WORKDIR /usr/src/app
-
+RUN npm install chartjs-node-canvas
 # Install required system libraries for Puppeteer + Chromium
 RUN apt-get update && apt-get install -y \
     libnss3 \
