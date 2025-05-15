@@ -2,101 +2,117 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{{ report_title }}</title>
-    <link href="./output.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
-      @media print {
-        .page-break { page-break-before: always; }
-      }
-      .report-section {
-        page-break-inside: avoid;
-      }
-      .report-section:nth-of-type(even) {
-        background-color: #f9fafb;
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #fdfdfd;
+        color: #1f2937;
         padding: 2rem;
-        border-radius: 8px;
+        line-height: 1.6;
+        font-size: 16px;
       }
-      .section-title {
-        border-bottom: 1px solid #ccc;
-        padding-bottom: 0.5rem;
+
+      section {
+        margin-bottom: 3rem;
+      }
+
+      h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1d4ed8;
+        margin-bottom: 1rem;
+        text-align: center;
+      }
+
+      h2.section-title {
+        font-size: 1.75rem;
+        font-weight: 600;
+        margin-top: 3rem;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        color: #111827;
+        border-bottom: 2px solid #d1d5db;
+        padding-bottom: 0.25rem;
+      }
+
+      h2.section-title img {
+        width: 32px;
+        height: 32px;
+      }
+
+      p {
+        margin-bottom: 1rem;
+      }
+
+      ul {
+        padding-left: 1.5rem;
+        margin-bottom: 1rem;
+      }
+
+      ul li {
+        margin-bottom: 0.5rem;
+      }
+
+      .chart {
+        margin: 2rem 0;
+        text-align: center;
+      }
+
+      .footer {
+        font-size: 0.85rem;
+        color: #6b7280;
+        margin-top: 4rem;
+        text-align: center;
+        border-top: 1px solid #e5e7eb;
+        padding-top: 1rem;
       }
     </style>
   </head>
-  <body class="bg-white text-gray-900 font-sans">
-    {{ header_visual }}
+  <body>
+    <!-- Optional header content is injected dynamically -->
 
-    <main class="max-w-3xl mx-auto px-6 py-10">
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" alt="Executive Summary Icon" class="w-6 h-6" />
-          Executive Summary
-        </h2>
-        <div class="section-content">
-          {{ executive_summary }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Executive Summary</h2>
+      {{ executive_summary }}
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" alt="Market Trends Icon" class="w-6 h-6" />
-          Market Trends
-        </h2>
-        <div class="section-content">
-          {{ market_trends }}
-          {{ chart_url }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Market Trends</h2>
+      {{ market_trends }}
+      <div class="chart">{{ chart_url }}</div>
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" alt="Regional Differences Icon" class="w-6 h-6" />
-          Regional Differences
-        </h2>
-        <div class="section-content">
-          {{ regional_differences }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Regional Differences</h2>
+      {{ regional_differences }}
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" alt="Customer Pain Points Icon" class="w-6 h-6" />
-          Customer Pain Points
-        </h2>
-        <div class="section-content">
-          {{ pain_points }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Customer Pain Points</h2>
+      {{ pain_points }}
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" alt="Marketing Strategies Icon" class="w-6 h-6" />
-          Marketing Strategies
-        </h2>
-        <div class="section-content">
-          {{ marketing_strategies }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Marketing Strategies</h2>
+      {{ marketing_strategies }}
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" alt="Business Opportunities Icon" class="w-6 h-6" />
-          Business Opportunities
-        </h2>
-        <div class="section-content">
-          {{ business_opportunities }}
-        </div>
-      </section>
+    <section>
+      <h2 class="section-title">Business Opportunities</h2>
+      {{ business_opportunities }}
+    </section>
 
-      <section class="report-section border-b border-gray-300 py-10 mb-6">
-        <h2 class="section-title flex items-center gap-3 text-xl font-semibold text-blue-900 mb-4">
-          <img src="https://assets.performancecorporate.com/uploads/1747227900260-Bonus-Resources.svg" alt="Bonus Resources Icon" class="w-6 h-6" />
-          Bonus Resources
-        </h2>
-        <div class="section-content">
-          {{ bonus_resources }}
-        </div>
-      </section>
-    </main>
+    <section>
+      <h2 class="section-title">Bonus Resources</h2>
+      {{ bonus_resources }}
+    </section>
+
+    <div class="footer">
+      This report was generated by Performance Marketing Group | performancecorporate.com
+    </div>
   </body>
 </html>
