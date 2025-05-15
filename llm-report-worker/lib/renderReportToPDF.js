@@ -1,3 +1,4 @@
+// renderReportToPDF.js
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
@@ -9,26 +10,21 @@ const height = 400;
 const chartCanvas = new ChartJSNodeCanvas({ width, height });
 
 async function renderReportToPDF(data = {}) {
-  const templateName = data.template_file || 'report-template-default.html';
-  const templatePath = path.join(__dirname, '../templates', templateName);
+  const templatePath = path.join(__dirname, '../templates/report-template.html');
   let html = fs.readFileSync(templatePath, 'utf8');
 
-  // Clear default header section
   html = html.replace(/<header class=".*?<\/header>/s, '');
 
-  // Add upgraded cover
   const headerVisual = `
-  <section class="mb-10 relative w-full h-[300px] overflow-hidden bg-gray-900 text-white">
+  <section class="mb-10 relative w-full h-[300px] overflow-hidden">
     <img src="${data.header_image_url}" alt="Report Banner" class="absolute inset-0 w-full h-full object-cover opacity-80" />
-    <div class="relative z-10 flex flex-col items-center justify-center h-full text-center px-4">
+    <div class="relative z-10 flex flex-col items-center justify-center h-full text-white text-center px-4">
       <h1 class="text-4xl font-bold drop-shadow-md">${data.report_title}</h1>
       <p class="text-lg mt-2 drop-shadow-sm">${data.subtitle || ''}</p>
     </div>
-  </section>
-  `;
+  </section>`;
   html = html.replace('<body>', `<body>\n${headerVisual}`);
 
-  // Pull active prompts if product_id is available
   const prompts = {};
   if (data.product_id) {
     const result = await db.query(
@@ -38,27 +34,28 @@ async function renderReportToPDF(data = {}) {
     for (const row of result.rows) {
       let prompt = row.prompt_text;
       for (const [token, value] of Object.entries(data)) {
-        prompt = prompt.replace(new RegExp(`{{\\s*${token}\\s*}}`, 'g'), value);
+        prompt = prompt.replace(new RegExp(`{{\s*${token}\s*}}`, 'g'), value);
       }
       prompts[row.section_key] = prompt;
     }
   }
 
-  // Inject chart (Market Trends only)
-  let chartTag = '<div class="text-sm italic text-gray-500">Chart unavailable</div>';
+  let chartImgTag = '<div class="text-sm italic text-gray-500">Chart unavailable</div>';
   try {
     const chartBuffer = await chartCanvas.renderToBuffer({
       type: 'line',
       data: {
         labels: ['2024', '2025', '2026'],
-        datasets: [{
-          label: 'E-Commerce Market Size (USD Billions)',
-          data: [214, 356, 520],
-          backgroundColor: 'rgba(59,130,246,0.3)',
-          borderColor: 'rgba(59,130,246,1)',
-          fill: true,
-          tension: 0.4,
-        }],
+        datasets: [
+          {
+            label: 'E-Commerce Market Size (USD Billions)',
+            data: [214, 356, 520],
+            backgroundColor: 'rgba(59,130,246,0.3)',
+            borderColor: 'rgba(59,130,246,1)',
+            fill: true,
+            tension: 0.4,
+          },
+        ],
       },
       options: {
         responsive: false,
@@ -69,38 +66,32 @@ async function renderReportToPDF(data = {}) {
       },
     });
     const chartBase64 = chartBuffer.toString('base64');
-    chartTag = `<img src="data:image/png;base64,${chartBase64}" alt="Market Trends Chart" class="w-full my-4 rounded shadow-md" />`;
+    chartImgTag = `<img src="data:image/png;base64,${chartBase64}" alt="Market Trends Chart" class="w-full my-4 rounded shadow-md" />`;
   } catch (err) {
-    console.warn('[Chart] Failed to generate chart. Using fallback.');
+    console.warn('Chart generation failed. Using fallback text.', err);
   }
+  html = html.replace('{{chart_url}}', chartImgTag);
 
-  data.chart_url = chartTag; // Set chart image tag for placeholder substitution
-
-  // Replace content tokens
-  for (const [key, value] of Object.entries(data)) {
-    if (!value || key === 'product_id') continue;
-    const token = `{{\\s*${key}\\s*}}`;
-    const pattern = new RegExp(token, 'g');
-
-    const raw = typeof value === 'string' ? value : String(value);
-    const formatted = raw
+  Object.entries(data).forEach(([key, value]) => {
+    if (key === 'chart_url') return;
+    const pattern = new RegExp(`{{\s*${key}\s*}}`, 'g');
+    const stringValue = typeof value === 'string' ? value : String(value ?? '');
+    const formattedValue = stringValue
       .split(/\n{2,}/g)
-      .map(paragraph => {
+      .map((paragraph) => {
         if (paragraph.trim().startsWith('- ') || /^\d+\.\s/.test(paragraph.trim())) {
-          const items = paragraph
-            .split('\n')
-            .map(line => `<li>${line.replace(/^[-\d.\s]+/, '').trim()}</li>`)
+          const listItems = paragraph
+            .split(/\n/)
+            .map((line) => `<li>${line.replace(/^[-\d.\s]+/, '').trim()}</li>`)
             .join('');
-          return `<ul class="list-disc pl-6 mb-4">${items}</ul>`;
+          return `<ul class="list-disc pl-6 mb-4">${listItems}</ul>`;
         }
         return `<p class="mb-4">${paragraph.replace(/\n/g, '<br>')}</p>`;
       })
       .join('\n');
+    html = html.replace(pattern, formattedValue);
+  });
 
-    html = html.replace(pattern, formatted);
-  }
-
-  // Icons
   const sectionIcons = {
     'Executive Summary': 'https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg',
     'Market Trends': 'https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg',
@@ -113,30 +104,35 @@ async function renderReportToPDF(data = {}) {
   };
 
   for (const [title, iconUrl] of Object.entries(sectionIcons)) {
-    const safeTitle = title.replace(/([.*+?^=!:${}()|[\]\\])/g, '\\$1');
-    const regex = new RegExp(`<h2 class=\\"section-title\\">.*?${safeTitle}.*?<\\/h2>`, 'i');
+    const cleanTitle = title.replace(/([.*+?^=!:${}()|[\\]\\])/g, '\\$1');
+    const regex = new RegExp(`<h2 class=\\"section-title\\">.*?${cleanTitle}.*?<\\/h2>`, 'i');
     const replacement = `
-      <h2 class="section-title flex items-center gap-3 mb-4">
+    <section class="mb-12 py-6 px-4 border-t border-gray-300">
+      <h2 class="section-title flex items-center gap-3 text-2xl font-semibold text-gray-800 mb-4">
         <img src="${iconUrl}" alt="${title} Icon" class="w-8 h-8" />
         ${title}
-      </h2>
-    `;
+      </h2>`;
     html = html.replace(regex, replacement);
   }
 
-  // Puppeteer render
+  html += '\n</body></html>'; // Ensure closing body tag
+
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
-
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0' });
 
   const pdfBuffer = await page.pdf({
     format: 'A4',
     printBackground: true,
-    margin: { top: '20mm', bottom: '20mm', left: '15mm', right: '15mm' }
+    margin: {
+      top: '20mm',
+      bottom: '20mm',
+      left: '15mm',
+      right: '15mm',
+    },
   });
 
   await browser.close();
