@@ -48,7 +48,7 @@ async function renderReportToPDF(data = {}) {
         datasets: [{
           label: 'E-Commerce Market Size (USD Billions)',
           data: [214, 356, 520],
-          backgroundColor: 'rgba(59, 130, 246, 0.3)', // Blue with transparency
+          backgroundColor: 'rgba(59, 130, 246, 0.2)', // Lighter blue with transparency
           borderColor: 'rgba(59, 130, 246, 1)',
           borderWidth: 3,
           pointBackgroundColor: '#ffffff',
@@ -57,7 +57,7 @@ async function renderReportToPDF(data = {}) {
           pointRadius: 6,
           pointHoverRadius: 8,
           fill: true,
-          tension: 0.4,
+          tension: 0.3, // Slightly reduced curve tension
         }],
       },
       options: {
@@ -66,22 +66,22 @@ async function renderReportToPDF(data = {}) {
         animation: false, // No animation needed for PDF
         layout: {
           padding: {
-            left: 10,
+            left: 15,
             right: 30,
-            top: 20,
-            bottom: 10
+            top: 25,
+            bottom: 15
           }
         },
         scales: {
           y: {
-            beginAtZero: false,
+            beginAtZero: true, // Start from zero for better perspective
             grid: {
-              color: 'rgba(0, 0, 0, 0.05)',
+              color: 'rgba(0, 0, 0, 0.07)', // Slightly darker grid lines
               lineWidth: 1
             },
             ticks: {
               font: {
-                size: 12,
+                size: 13,
                 weight: '500'
               },
               padding: 10,
@@ -99,12 +99,12 @@ async function renderReportToPDF(data = {}) {
           },
           x: {
             grid: {
-              color: 'rgba(0, 0, 0, 0.05)',
+              color: 'rgba(0, 0, 0, 0.07)',
               lineWidth: 1
             },
             ticks: {
               font: {
-                size: 12,
+                size: 13,
                 weight: '500'
               },
               padding: 10,
@@ -127,7 +127,17 @@ async function renderReportToPDF(data = {}) {
             }
           },
           title: { 
-            display: false // We're using our own title in the HTML
+            display: true,
+            text: 'Projected E-Commerce Market Growth',
+            font: {
+              size: 16,
+              weight: 'bold'
+            },
+            color: '#1f2937',
+            padding: {
+              top: 10,
+              bottom: 20
+            }
           },
           tooltip: {
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -154,7 +164,7 @@ async function renderReportToPDF(data = {}) {
             color: '#1f2937',
             font: {
               weight: 'bold',
-              size: 11
+              size: 12
             },
             padding: 6,
             formatter: (value) => `${value}B`
@@ -264,6 +274,40 @@ async function renderReportToPDF(data = {}) {
     timeout: 30000
   });
   
+  // Check and fix image loading issues
+  await page.evaluate(() => {
+    // Fix potential image path issues
+    const images = Array.from(document.querySelectorAll('img'));
+    images.forEach(img => {
+      // Make sure images are properly loaded
+      img.onerror = function() {
+        // Set a fallback for any image that fails to load
+        if (img.classList.contains('header-image')) {
+          img.src = 'https://assets.performancecorporate.com/uploads/1747228076352-ecommerce-header.jpg';
+        } else if (img.classList.contains('section-icon')) {
+          // Use a default icon for section icons that fail
+          img.src = 'https://assets.performancecorporate.com/uploads/default-section-icon.svg';
+          // If icon fails, add a style to compensate for the missing icon
+          img.onerror = function() {
+            img.style.display = 'none';
+            img.parentElement.style.paddingLeft = '0';
+          }
+        }
+      };
+      
+      // For header image specifically
+      if (img.classList.contains('header-image')) {
+        // Ensure header image loads properly
+        img.style.height = '100%';
+        img.style.width = '100%';
+        img.style.objectFit = 'cover';
+      }
+    });
+  });
+  
+  // Wait longer to ensure images load
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
   // Check if images are loaded properly, particularly the header image
   const imageLoadStatus = await page.evaluate(() => {
     const images = Array.from(document.querySelectorAll('img'));
@@ -310,19 +354,19 @@ async function renderReportToPDF(data = {}) {
       }
     }, mappedData.header_image_url);
     
-    // Wait again for images to load (using setTimeout instead of waitForTimeout)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait again for images to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
   }
   
-  // Configure PDF options
+  // Configure PDF options with improved margins
   const pdfOptions = {
     format: 'A4',
     printBackground: true,
     margin: {
-      top: '10mm',
-      bottom: '10mm',
-      left: '10mm',
-      right: '10mm'
+      top: '15mm',     // Increased from 10mm
+      bottom: '15mm',  // Increased from 10mm
+      left: '15mm',    // Increased from 10mm
+      right: '15mm'    // Increased from 10mm
     },
     displayHeaderFooter: true,
     headerTemplate: '<div></div>', // Empty header
@@ -334,7 +378,7 @@ async function renderReportToPDF(data = {}) {
     preferCSSPageSize: true
   };
   
-  // Add custom styles for PDF printing
+  // Add custom styles for PDF printing with improved padding
   await page.addStyleTag({
     content: `
       @page {
@@ -347,7 +391,7 @@ async function renderReportToPDF(data = {}) {
       }
       .page-container {
         max-width: 100%;
-        padding: 20px;
+        padding: 20px 30px; /* Increased horizontal padding */
       }
       @media print {
         .header-container {
@@ -355,6 +399,11 @@ async function renderReportToPDF(data = {}) {
         }
         section {
           page-break-inside: avoid;
+          margin-bottom: 30px; /* Increased spacing between sections */
+          padding: 15px;       /* Added padding inside sections */
+        }
+        p, ul, ol {
+          margin-bottom: 10px; /* Consistent spacing for text elements */
         }
       }
     `
