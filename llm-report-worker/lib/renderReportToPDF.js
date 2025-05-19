@@ -6,7 +6,6 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { getChartConfig } = require('./chartConfigs');
 const { marked } = require('marked');
 const sanitizeHtml = require('sanitize-html');
-
 const width = 900;
 const height = 450;
 const chartCanvas = new ChartJSNodeCanvas({ width, height });
@@ -39,13 +38,32 @@ async function renderReportToPDF(data = {}) {
   } catch (err) {
     console.warn('Chart generation failed', err);
   }
-
   html = html.replace('{{ chart_url }}', chartImgTag);
 
-  Object.entries(mappedData).forEach(([key, val]) => {
+  // First process non-HTML/Markdown fields
+  const directReplaceFields = ['report_title', 'subtitle', 'header_image_url'];
+  directReplaceFields.forEach(key => {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    if (typeof val === 'string') {
-      const rawHTML = marked(val);
+    if (mappedData[key]) {
+      html = html.replace(pattern, mappedData[key]);
+    }
+  });
+
+  // Then process Markdown/HTML content fields
+  const markdownFields = [
+    'executive_summary', 
+    'market_trends', 
+    'regional_differences', 
+    'pain_points', 
+    'marketing_strategies', 
+    'business_opportunities', 
+    'bonus_resources'
+  ];
+  
+  markdownFields.forEach(key => {
+    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
+    if (mappedData[key] && typeof mappedData[key] === 'string') {
+      const rawHTML = marked(mappedData[key]);
       const safeHTML = sanitizeHtml(rawHTML, {
         allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'h3']),
         allowedAttributes: false
@@ -59,10 +77,10 @@ async function renderReportToPDF(data = {}) {
     args: ['--no-sandbox'],
     defaultViewport: { width: 1200, height: 1600 }
   });
-
+  
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
-
+  
   const pdf = await page.pdf({
     format: 'A4',
     printBackground: true,
@@ -74,7 +92,7 @@ async function renderReportToPDF(data = {}) {
         Performance Marketing Group | Page <span class="pageNumber"></span> of <span class="totalPages"></span>
       </div>`
   });
-
+  
   await browser.close();
   return pdf;
 }
