@@ -3,6 +3,9 @@ const fs = require('fs');
 const path = require('path');
 const db = require('../config/db');
 const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
+const { getChartConfig } = require('./chartConfigs');
+const { marked } = require('marked');
+const sanitizeHtml = require('sanitize-html');
 
 const width = 900;
 const height = 450;
@@ -14,6 +17,7 @@ async function renderReportToPDF(data = {}) {
     subtitle: data.report_subtitle || '',
     header_image_url: data.header_image_url || 'https://assets.performancecorporate.com/uploads/default-header.jpg',
     template_file: data.template_file || 'report-template-enhanced.html',
+    chart_key: data.chart_key || 'ecommerce',
     executive_summary: data.executive_summary || '',
     market_trends: data.market_trends || '',
     regional_differences: data.regional_differences || '',
@@ -28,36 +32,7 @@ async function renderReportToPDF(data = {}) {
 
   let chartImgTag = '<div class="text-sm italic text-gray-500">Chart unavailable</div>';
   try {
-    const chartConfig = {
-      type: 'line',
-      data: {
-        labels: ['2024', '2025', '2026'],
-        datasets: [{
-          label: 'E-Commerce Market Size (USD Billions)',
-          data: [214, 356, 520],
-          backgroundColor: 'rgba(59, 130, 246, 0.2)',
-          borderColor: 'rgba(59, 130, 246, 1)',
-          borderWidth: 3,
-          fill: true,
-          tension: 0.3,
-        }],
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: { position: 'top' },
-          title: {
-            display: true,
-            text: 'Projected E-Commerce Market Growth (2024–2026)',
-            font: {
-              size: 16,
-              weight: 'bold'
-            }
-          },
-        }
-      },
-    };
-
+    const chartConfig = getChartConfig(mappedData.chart_key);
     const chartBuffer = await chartCanvas.renderToBuffer(chartConfig);
     const base64 = chartBuffer.toString('base64');
     chartImgTag = `<img src="data:image/png;base64,${base64}" alt="Market Chart" class="w-full rounded-lg shadow-md" />`;
@@ -69,7 +44,14 @@ async function renderReportToPDF(data = {}) {
 
   Object.entries(mappedData).forEach(([key, val]) => {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    html = html.replace(pattern, val);
+    if (typeof val === 'string') {
+      const rawHTML = marked(val);
+      const safeHTML = sanitizeHtml(rawHTML, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'h3']),
+        allowedAttributes: false
+      });
+      html = html.replace(pattern, safeHTML);
+    }
   });
 
   const browser = await puppeteer.launch({
