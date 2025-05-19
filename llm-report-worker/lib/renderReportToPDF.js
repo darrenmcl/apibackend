@@ -6,14 +6,16 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 const { getChartConfig } = require('./chartConfigs');
 const { marked } = require('marked');
 const sanitizeHtml = require('sanitize-html');
+
 const width = 900;
 const height = 450;
 const chartCanvas = new ChartJSNodeCanvas({ width, height });
 
 async function renderReportToPDF(data = {}) {
   const mappedData = {
+    ...data,
     report_title: data.report_title || 'Generated Report',
-    subtitle: data.report_subtitle || '',
+    report_subtitle: data.report_subtitle || '',
     header_image_url: data.header_image_url || 'https://assets.performancecorporate.com/uploads/default-header.jpg',
     template_file: data.template_file || 'report-template-enhanced.html',
     chart_key: data.chart_key || 'ecommerce',
@@ -26,9 +28,16 @@ async function renderReportToPDF(data = {}) {
     bonus_resources: data.bonus_resources || '',
   };
 
+  console.log('[🧾 Rendered Report Fields]', {
+    report_title: mappedData.report_title,
+    report_subtitle: mappedData.report_subtitle,
+    header_image_url: mappedData.header_image_url
+  });
+
   const templatePath = path.join(__dirname, `../templates/${mappedData.template_file}`);
   let html = fs.readFileSync(templatePath, 'utf8');
 
+  // Chart generation
   let chartImgTag = '<div class="text-sm italic text-gray-500">Chart unavailable</div>';
   try {
     const chartConfig = getChartConfig(mappedData.chart_key);
@@ -38,28 +47,27 @@ async function renderReportToPDF(data = {}) {
   } catch (err) {
     console.warn('Chart generation failed', err);
   }
+
   html = html.replace('{{ chart_url }}', chartImgTag);
 
-  // First process non-HTML/Markdown fields
-  const directReplaceFields = ['report_title', 'subtitle', 'header_image_url'];
+  // Replace plain string fields (no markdown)
+  const directReplaceFields = ['report_title', 'report_subtitle', 'header_image_url'];
   directReplaceFields.forEach(key => {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    if (mappedData[key]) {
-      html = html.replace(pattern, mappedData[key]);
-    }
+    html = html.replace(pattern, mappedData[key]);
   });
 
-  // Then process Markdown/HTML content fields
+  // Replace markdown content fields
   const markdownFields = [
-    'executive_summary', 
-    'market_trends', 
-    'regional_differences', 
-    'pain_points', 
-    'marketing_strategies', 
-    'business_opportunities', 
+    'executive_summary',
+    'market_trends',
+    'regional_differences',
+    'pain_points',
+    'marketing_strategies',
+    'business_opportunities',
     'bonus_resources'
   ];
-  
+
   markdownFields.forEach(key => {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
     if (mappedData[key] && typeof mappedData[key] === 'string') {
@@ -77,10 +85,10 @@ async function renderReportToPDF(data = {}) {
     args: ['--no-sandbox'],
     defaultViewport: { width: 1200, height: 1600 }
   });
-  
+
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
-  
+
   const pdf = await page.pdf({
     format: 'A4',
     printBackground: true,
@@ -92,7 +100,7 @@ async function renderReportToPDF(data = {}) {
         Performance Marketing Group | Page <span class="pageNumber"></span> of <span class="totalPages"></span>
       </div>`
   });
-  
+
   await browser.close();
   return pdf;
 }
