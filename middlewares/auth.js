@@ -25,7 +25,7 @@ function auth(req, res, next) {
     }
   }
 
-  logger.info(`[Auth Middleware] Final Token Found: ${token ? 'Yes' : 'No'}`);
+  logger.info(`[Auth Middleware] Final Token Found: ${token ? 'Yes' : 'No'} $actualTokenValue: token`);
 
   // --- ADD TOKEN LOGGING HERE ---
   // Log the actual token string before verification for debugging
@@ -48,7 +48,7 @@ function auth(req, res, next) {
     req.user = decoded;
     next();
   } catch (error) {
-    logger.error({ err: error }, `[Auth Middleware] Token verification failed: ${error.message}`);
+    logger.error({ err: error }, `[Auth Middleware] Token verification failed: actualTokenValue: ${token} and ${error.message}`);
     // The 'err' object in the log above will contain the error details, including 'jwt malformed'
     res.status(401).json({ message: 'Invalid or expired token.' });
   }

@@ -11,6 +11,27 @@ const width = 900;
 const height = 450;
 const chartCanvas = new ChartJSNodeCanvas({ width, height });
 
+// Function to find Chrome/Chromium executable
+function findChromiumExecutable() {
+  const possiblePaths = [
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chrome',
+    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable'
+  ];
+  
+  for (const browserPath of possiblePaths) {
+    if (fs.existsSync(browserPath)) {
+      console.log(`Found browser at: ${browserPath}`);
+      return browserPath;
+    }
+  }
+  
+  console.log('No suitable browser found. Falling back to default behavior.');
+  return null; // Let Puppeteer try to find it
+}
+
 async function renderReportToPDF(data = {}) {
   const mappedData = {
     ...data,
@@ -60,7 +81,6 @@ async function renderReportToPDF(data = {}) {
 
   markdownFields.forEach(key => {
     const blockRegex = new RegExp(`<!-- START: ${key} -->[\\s\\S]*?<!-- END: ${key} -->`, 'gi');
-
     if (mappedData[key] && typeof mappedData[key] === 'string' && mappedData[key].trim() !== '') {
       const rawHTML = marked(mappedData[key]);
       const safeHTML = sanitizeHtml(rawHTML, {
@@ -73,15 +93,30 @@ async function renderReportToPDF(data = {}) {
     }
   });
 
-  const browser = await puppeteer.launch({
+  // Find the browser executable
+  const executablePath = findChromiumExecutable();
+  
+  // Configure the browser launch options
+  const launchOptions = {
     headless: 'new',
-    args: ['--no-sandbox'],
+    args: ['--no-sandbox', '--disable-dev-shm-usage'],
     defaultViewport: { width: 1200, height: 1600 }
-  });
+  };
+  
+  // Add executablePath only if we found a browser
+  if (executablePath) {
+    launchOptions.executablePath = executablePath;
+    console.log(`Launching browser with executable path: ${executablePath}`);
+  } else {
+    console.log('No browser path found. Relying on Puppeteer defaults.');
+  }
 
+  // Launch the browser with the configured options
+  const browser = await puppeteer.launch(launchOptions);
+  
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: 'networkidle0', timeout: 30000 });
-
+  
   const pdf = await page.pdf({
     format: 'A4',
     printBackground: true,
