@@ -28,16 +28,9 @@ async function renderReportToPDF(data = {}) {
     bonus_resources: data.bonus_resources || '',
   };
 
-  console.log('[🧾 Rendered Report Fields]', {
-    report_title: mappedData.report_title,
-    report_subtitle: mappedData.report_subtitle,
-    header_image_url: mappedData.header_image_url
-  });
-
   const templatePath = path.join(__dirname, `../templates/${mappedData.template_file}`);
   let html = fs.readFileSync(templatePath, 'utf8');
 
-  // Chart generation
   let chartImgTag = '<div class="text-sm italic text-gray-500">Chart unavailable</div>';
   try {
     const chartConfig = getChartConfig(mappedData.chart_key);
@@ -47,17 +40,14 @@ async function renderReportToPDF(data = {}) {
   } catch (err) {
     console.warn('Chart generation failed', err);
   }
-
   html = html.replace('{{ chart_url }}', chartImgTag);
 
-  // Replace plain string fields (no markdown)
   const directReplaceFields = ['report_title', 'report_subtitle', 'header_image_url'];
   directReplaceFields.forEach(key => {
     const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
     html = html.replace(pattern, mappedData[key]);
   });
 
-  // Replace markdown content fields
   const markdownFields = [
     'executive_summary',
     'market_trends',
@@ -69,14 +59,17 @@ async function renderReportToPDF(data = {}) {
   ];
 
   markdownFields.forEach(key => {
-    const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-    if (mappedData[key] && typeof mappedData[key] === 'string') {
+    const blockRegex = new RegExp(`<!-- START: ${key} -->[\\s\\S]*?<!-- END: ${key} -->`, 'gi');
+
+    if (mappedData[key] && typeof mappedData[key] === 'string' && mappedData[key].trim() !== '') {
       const rawHTML = marked(mappedData[key]);
       const safeHTML = sanitizeHtml(rawHTML, {
         allowedTags: sanitizeHtml.defaults.allowedTags.concat(['h1', 'h2', 'h3']),
         allowedAttributes: false
       });
-      html = html.replace(pattern, safeHTML);
+      html = html.replace(new RegExp(`{{\\s*${key}\\s*}}`, 'g'), safeHTML);
+    } else {
+      html = html.replace(blockRegex, '');
     }
   });
 

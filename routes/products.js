@@ -253,11 +253,12 @@ router.post('/', auth, isAdmin, async (req, res) => {
 
         // --- Insert into DB ---
         // *** MODIFIED: Added category_id column and parameter $7 ***
-        const result = await db.query(
-            'INSERT INTO products (name, description, short_description, price, image, featured, slug, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
-            // *** MODIFIED: Added categoryIdValue ***
-            [name.trim(), description || null, numericPrice, imageValue, featuredValue, slug, categoryIdValue] // Use null for category_id if not provided
-        );
+const result = await db.query(
+  'INSERT INTO products (name, description, short_description, price, image, featured, slug, category_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *',
+  [name.trim(), description || null, short_description || null, numericPrice, imageValue, featuredValue, slug, categoryIdValue]
+);
+
+
         const newProduct = result.rows[0];
          // Parse price in returned object
          if (newProduct.price !== null && newProduct.price !== undefined) {

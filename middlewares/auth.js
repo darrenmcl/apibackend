@@ -27,6 +27,15 @@ function auth(req, res, next) {
 
   logger.info(`[Auth Middleware] Final Token Found: ${token ? 'Yes' : 'No'}`);
 
+  // --- ADD TOKEN LOGGING HERE ---
+  // Log the actual token string before verification for debugging
+  // Use a debug level, as tokens can be sensitive.
+  // Ensure this is not active in production or that your debug logs are handled securely.
+  if (token) {
+    logger.debug({ actualTokenValue: token }, '[Auth Middleware] Actual token string to be verified.');
+  }
+  // --- END TOKEN LOGGING ---
+
   if (!token) {
     logger.warn('[Auth Middleware] No token found. Denying access.');
     return res.status(401).json({ message: 'Access denied. No token provided.' });
@@ -40,6 +49,7 @@ function auth(req, res, next) {
     next();
   } catch (error) {
     logger.error({ err: error }, `[Auth Middleware] Token verification failed: ${error.message}`);
+    // The 'err' object in the log above will contain the error details, including 'jwt malformed'
     res.status(401).json({ message: 'Invalid or expired token.' });
   }
 }

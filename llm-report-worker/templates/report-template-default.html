@@ -5,30 +5,12 @@
     <title>{{ report_title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
-      :root {
-        --primary: #3b82f6;
-        --primary-dark: #1d4ed8;
-        --primary-light: #dbeafe;
-        --accent: #7c3aed;
-        --text: #1f2937;
-        --text-light: #6b7280;
-        --bg: #ffffff;
-        --bg-alt: #f9fafb;
-        --border: #e5e7eb;
-      }
-
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-
       body {
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: var(--bg);
-        color: var(--text);
+        background: #ffffff;
+        color: #1f2937;
         line-height: 1.6;
-        font-size: 16px;
+        font-size: 18px;
         margin: 0;
       }
 
@@ -38,7 +20,6 @@
         padding: 20px;
       }
 
-      /* HEADER SECTION */
       .header-container {
         position: relative;
         height: 340px;
@@ -71,7 +52,7 @@
       }
 
       .header-title {
-        font-size: 2.5rem;
+        font-size: 3rem;
         font-weight: 800;
         color: white;
         text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
@@ -80,24 +61,23 @@
       }
 
       .header-subtitle {
-        font-size: 1.2rem;
+        font-size: 1.5rem;
         font-weight: 400;
         color: white;
         opacity: 0.9;
         max-width: 700px;
       }
 
-      /* SECTIONS */
       section {
         margin-bottom: 4rem;
-        background: var(--bg);
+        background: #ffffff;
         border-radius: 12px;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         padding: 2rem;
       }
 
       section:nth-child(even) {
-        background: var(--bg-alt);
+        background: #f9fafb;
       }
 
       .section-title-container {
@@ -106,25 +86,24 @@
         gap: 1rem;
         margin-bottom: 1.5rem;
         padding-bottom: 0.75rem;
-        border-bottom: 2px solid var(--primary-light);
+        border-bottom: 2px solid #dbeafe;
       }
 
       .section-icon {
         width: 40px;
         height: 40px;
+        object-fit: contain;
         flex-shrink: 0;
       }
 
       .section-title {
-        font-size: 1.75rem;
+        font-size: 2rem;
         font-weight: 700;
-        color: var(--primary-dark);
+        color: #1d4ed8;
       }
 
-      /* TEXT */
       p {
         margin-bottom: 1.25rem;
-        color: var(--text);
       }
 
       ul, ol {
@@ -136,87 +115,23 @@
         margin-bottom: 0.75rem;
       }
 
-      .point-number {
-        display: inline-flex;
-        justify-content: center;
-        align-items: center;
-        width: 28px;
-        height: 28px;
-        background-color: var(--primary);
-        color: white;
-        border-radius: 50%;
-        margin-right: 0.75rem;
-        font-weight: 600;
-        font-size: 0.9rem;
-      }
-
-      .highlight-box {
-        background-color: var(--primary-light);
-        border-left: 4px solid var(--primary);
-        padding: 1.5rem;
-        margin: 1.5rem 0;
-        border-radius: 0 8px 8px 0;
-      }
-
-      .highlight-title {
-        font-weight: 600;
-        font-size: 1.1rem;
-        margin-bottom: 0.5rem;
-        color: var(--primary-dark);
-      }
-
-      .bold {
-        font-weight: 600;
-      }
-
       .chart-container {
         margin-top: 2rem;
         text-align: center;
       }
 
-      /* FOOTER */
       .footer {
         text-align: center;
         padding: 2rem 0;
-        color: var(--text-light);
+        color: #6b7280;
         font-size: 0.9rem;
-        border-top: 1px solid var(--border);
+        border-top: 1px solid #e5e7eb;
         margin-top: 3rem;
-      }
-
-      @media print {
-        body {
-          font-size: 12pt;
-          background: white;
-        }
-
-        .page-container {
-          max-width: 100%;
-          padding: 15mm;
-        }
-
-        section {
-          page-break-inside: avoid;
-          margin-bottom: 20pt;
-          box-shadow: none;
-          padding: 10pt;
-        }
-
-        .header-container {
-          height: auto;
-          margin-bottom: 20pt;
-          page-break-after: avoid;
-        }
-
-        p, ul, ol {
-          margin-bottom: 10pt;
-        }
       }
     </style>
   </head>
   <body>
     <div class="page-container">
-      <!-- Header -->
       <div class="header-container">
         <img class="header-image" src="{{ header_image_url }}" alt="Report Banner" />
         <div class="header-overlay">
@@ -225,7 +140,7 @@
         </div>
       </div>
 
-      <!-- Sections -->
+      <!-- START: executive_summary -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
@@ -233,7 +148,9 @@
         </div>
         {{ executive_summary }}
       </section>
+      <!-- END: executive_summary -->
 
+      <!-- START: market_trends -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" />
@@ -244,7 +161,9 @@
           {{ chart_url }}
         </div>
       </section>
+      <!-- END: market_trends -->
 
+      <!-- START: regional_differences -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" />
@@ -252,7 +171,9 @@
         </div>
         {{ regional_differences }}
       </section>
+      <!-- END: regional_differences -->
 
+      <!-- START: pain_points -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" />
@@ -260,7 +181,9 @@
         </div>
         {{ pain_points }}
       </section>
+      <!-- END: pain_points -->
 
+      <!-- START: marketing_strategies -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" />
@@ -268,7 +191,9 @@
         </div>
         {{ marketing_strategies }}
       </section>
+      <!-- END: marketing_strategies -->
 
+      <!-- START: business_opportunities -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" />
@@ -276,7 +201,9 @@
         </div>
         {{ business_opportunities }}
       </section>
+      <!-- END: business_opportunities -->
 
+      <!-- START: bonus_resources -->
       <section>
         <div class="section-title-container">
           <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227900260-Bonus-Resources.svg" />
@@ -284,8 +211,8 @@
         </div>
         {{ bonus_resources }}
       </section>
+      <!-- END: bonus_resources -->
 
-      <!-- Footer -->
       <footer class="footer">
         Performance Marketing Group | performancecorporate.com
       </footer>
