@@ -1,8 +1,10 @@
+// admin/routes/brands.js
 const express = require('express');
 const router = express.Router();
-const db = require('../../config/db'); // Adjust path if needed
+const db = require('../../config/db'); // Adjust if needed
 
-router.get('/brands', async (req, res) => {
+// Correct: this will respond to GET /admin/brands when mounted properly
+router.get('/', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, name, slug FROM brands ORDER BY name ASC`);
     res.json(result.rows);

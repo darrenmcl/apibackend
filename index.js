@@ -15,7 +15,7 @@ const PORT = process.env.PORT || 3012;
 // --- Import Routes ---
 const adminRoutes = require('./routes/admin');
 const promptRoutes = require('./routes/admin/prompts');
-const brandsRoutes = require('./routes/admin/brands');
+const brandRoutes = require('./routes/admin/brands');
 const productMetadataRouter = require('./routes/admin/products');
 const chatRoutes = require('./routes/chatRoutes');
 const sitemapRoutes = require('./routes/sitemap');
@@ -75,7 +75,7 @@ app.use(express.urlencoded({ extended: true }));
 logger.info('Mounting API routes...');
 app.use('/admin', adminRoutes);
 app.use('/admin/prompts', promptRoutes);
-app.use('/admin/brands', brandsRoutes);
+app.use('/admin/brands', brandRoutes);
 app.use('/admin/products', productMetadataRouter);
 app.use('/sitemap', sitemapRoutes);
 app.use('/chat', chatRoutes);
