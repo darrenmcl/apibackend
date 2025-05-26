@@ -29,6 +29,8 @@ const fileRoutes = require('./routes/fileRoutes');
 const categoryRoutes = require('./routes/categories');
 const stripeRoutes = require('./routes/stripe'); // /stripe routes (not webhook)
 const stripeWebhookHandler = require('./routes/stripeWebhook'); // Webhook handler (raw body)
+const generateReportRoute = require('./routes/admin/generateReport');
+
 // --- Global Middleware (ORDER MATTERS) ---
 // 1. Logging
 app.use(morgan('dev'));
@@ -90,6 +92,7 @@ app.use('/blog-categories', blogCategoryRoutes);
 app.use('/admin', require('./routes/admin/generateReport'));
 logger.info('Blog Category routes mounted at /blog-categories');
 app.use('/stripe', stripeRoutes); // create-payment-intent, etc.
+app.use('/generate-report', generateReportRoute);
 logger.info('Stripe routes mounted under /stripe');
 
 // --- Health Check ---

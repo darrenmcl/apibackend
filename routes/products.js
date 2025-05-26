@@ -49,59 +49,87 @@ async function generateUniqueSlug(name, currentId = null) {
 
 // *** GET all products (public) - MODIFIED to include category_slug ***
 // Modify GET / in routes/products.js
+
+// Add this to your existing products.js route - modify the GET / endpoint
+
+// *** GET all products (public) - MODIFIED to include brand and LLM filtering ***
 router.get('/', async (req, res) => {
     const requestStartTime = new Date().toISOString();
-    // ---> CHECK FOR QUERY PARAMETER <---
-    const { categorySlug } = req.query;
-    console.log(`[${requestStartTime}] [GET /products] Request received. ${categorySlug ? `Filtering by categorySlug: "${categorySlug}"` : 'Fetching all.'}`);
+    // Get query parameters for filtering
+    const { categorySlug, brand, requires_llm } = req.query;
+    
+    console.log(`[${requestStartTime}] [GET /products] Request received. Filters:`, {
+        categorySlug: categorySlug || 'none',
+        brand: brand || 'none', 
+        requires_llm: requires_llm || 'none'
+    });
 
     try {
         console.log(`[${requestStartTime}] [GET /products] Attempting DB query...`);
         const dbQueryStartTime = Date.now();
 
-        // Base query includes join and categorySlug selection
+        // Base query includes joins for category and brand info
         let query = `
             SELECT
                 p.id, p.name, p.description, p.short_description, p.price, p.image, p.featured,
-                p.created_at, p.updated_at,
-                p.slug,
-                p.category_id,
+                p.created_at, p.updated_at, p.slug,
+                p.category_id, p.brand_slug, p.brand_name, p.requires_llm_generation,
+                p.report_title, p.report_subtitle,
                 c.slug AS "categorySlug"
             FROM products p
-            LEFT JOIN categories c ON p.category_id = c.id `; // Note space at the end
+            LEFT JOIN categories c ON p.category_id = c.id
+        `;
 
+        const conditions = [];
         const params = [];
-        let paramIndex = 1;
 
-        // ---> ADD WHERE CLAUSE IF FILTERING <---
+        // Filter by category slug if provided
         if (categorySlug) {
-            query += ` WHERE c.slug = $${paramIndex++} `; // Filter by category slug
+            conditions.push(`c.slug = ${params.length + 1}`);
             params.push(categorySlug);
         }
 
-        query += ' ORDER BY p.created_at DESC'; // Add ordering
+        // Filter by brand slug if provided
+        if (brand) {
+            conditions.push(`p.brand_slug = ${params.length + 1}`);
+            params.push(brand);
+        }
+
+        // Filter by LLM requirement if provided
+        if (requires_llm === 'true') {
+            conditions.push(`p.requires_llm_generation = ${params.length + 1}`);
+            params.push(true);
+        }
+
+        if (conditions.length > 0) {
+            query += ' WHERE ' + conditions.join(' AND ');
+        }
+
+        query += ' ORDER BY p.created_at DESC';
 
         console.log(`Executing query: ${query.replace(/\s+/g, ' ')} with params:`, params);
         const result = await db.query(query, params);
-        // ... rest of the handler (processing results, sending response) ...
-         const dbQueryDuration = Date.now() - dbQueryStartTime;
-         console.log(`[<span class="math-inline">\{requestStartTime\}\] \[GET /products\] DB query successful \(</span>{dbQueryDuration}ms). Found ${result.rows.length} rows.`);
+        
+        const dbQueryDuration = Date.now() - dbQueryStartTime;
+        console.log(`[${requestStartTime}] [GET /products] DB query successful (${dbQueryDuration}ms). Found ${result.rows.length} rows.`);
 
-         const products = result.rows.map(product => ({
-             ...product,
-             price: (product.price !== null && product.price !== undefined) ? parseFloat(product.price) : null,
-             categorySlug: product.categorySlug
-         }));
+        const products = result.rows.map(product => ({
+            ...product,
+            price: (product.price !== null && product.price !== undefined) ? parseFloat(product.price) : null,
+            categorySlug: product.categorySlug
+        }));
 
-         console.log(`[${requestStartTime}] [GET /products] Sending ${products.length} products in response...`);
-         res.status(200).json(products);
-         console.log(`[${requestStartTime}] [GET /products] Response sent.`);
+        console.log(`[${requestStartTime}] [GET /products] Sending ${products.length} products in response...`);
+        res.status(200).json(products);
+        console.log(`[${requestStartTime}] [GET /products] Response sent.`);
 
     } catch (error) {
         console.error(`[${requestStartTime}] [GET /products] Error during processing:`, error);
         res.status(500).json({ message: 'Server error fetching products.' });
     }
 });
+
+
 // *** GET a single product by SLUG (public) - CORRECTED (Looks Good) ***
 router.get('/slug/:slug', async (req, res) => {
     const requestedSlug = req.params.slug;

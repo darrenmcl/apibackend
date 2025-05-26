@@ -86,4 +86,41 @@ router.patch('/:id(\\d+)', async (req, res) => {
   }
 });
 
+// routes/admin/products.js (or in a new route file)
+router.get('/by-brand/:slug', async (req, res) => {
+  const { slug } = req.params;
+  try {
+    const result = await db.query(`
+      SELECT id, name
+      FROM products
+      WHERE requires_llm_generation = true AND brand_slug = $1
+      ORDER BY name
+    `, [slug]);
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error('[GET /admin/products/by-brand/:slug] Error:', err);
+    res.status(500).json({ error: 'Failed to fetch products for brand' });
+  }
+});
+
+// GET all LLM-enabled products for a given brand_slug
+router.get('/by-brand/:slug', async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const result = await db.query(
+      `SELECT id, name FROM products WHERE brand_slug = $1 AND requires_llm_generation = true ORDER BY name`,
+      [slug]
+    );
+
+    res.json(result.rows);
+  } catch (err) {
+    console.error(`[Admin] Error fetching products by brand_slug (${slug}):`, err);
+    res.status(500).json({ message: 'Failed to fetch products by brand.' });
+  }
+});
+
+
+
 module.exports = router;
