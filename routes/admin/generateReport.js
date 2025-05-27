@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { getChannel } = require('../../lib/amqp'); // Ensure this is correct
 
-router.post('/generate-report', async (req, res) => {
+router.post('/', async (req, res) => {
   const { productId, brand } = req.body;
 
   if (!productId || !brand) {

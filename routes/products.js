@@ -53,6 +53,8 @@ async function generateUniqueSlug(name, currentId = null) {
 // Add this to your existing products.js route - modify the GET / endpoint
 
 // *** GET all products (public) - MODIFIED to include brand and LLM filtering ***
+
+// In your products.js route, modify the GET / handler
 router.get('/', async (req, res) => {
     const requestStartTime = new Date().toISOString();
     // Get query parameters for filtering
@@ -85,19 +87,19 @@ router.get('/', async (req, res) => {
 
         // Filter by category slug if provided
         if (categorySlug) {
-            conditions.push(`c.slug = ${params.length + 1}`);
+            conditions.push(`c.slug = $${params.length + 1}`);
             params.push(categorySlug);
         }
 
         // Filter by brand slug if provided
         if (brand) {
-            conditions.push(`p.brand_slug = ${params.length + 1}`);
+            conditions.push(`p.brand_slug = $${params.length + 1}`);
             params.push(brand);
         }
 
         // Filter by LLM requirement if provided
         if (requires_llm === 'true') {
-            conditions.push(`p.requires_llm_generation = ${params.length + 1}`);
+            conditions.push(`p.requires_llm_generation = $${params.length + 1}`);
             params.push(true);
         }
 
@@ -121,14 +123,12 @@ router.get('/', async (req, res) => {
 
         console.log(`[${requestStartTime}] [GET /products] Sending ${products.length} products in response...`);
         res.status(200).json(products);
-        console.log(`[${requestStartTime}] [GET /products] Response sent.`);
 
     } catch (error) {
         console.error(`[${requestStartTime}] [GET /products] Error during processing:`, error);
         res.status(500).json({ message: 'Server error fetching products.' });
     }
 });
-
 
 // *** GET a single product by SLUG (public) - CORRECTED (Looks Good) ***
 router.get('/slug/:slug', async (req, res) => {
