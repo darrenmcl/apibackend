@@ -13,6 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3012;
 
 // --- Import Routes ---
+const reportRoutes = require('./routes/reports'); // Create this file
 const adminRoutes = require('./routes/admin');
 const generateReportRoutes = require('./routes/admin/generateReport'); // Ensure this path is correct
 const promptRoutes = require('./routes/admin/prompts');
@@ -76,6 +77,7 @@ app.use(express.urlencoded({ extended: true }));
 logger.info('Mounting API routes...');
 
 // --- Mount MORE SPECIFIC /admin routes BEFORE the general /admin route ---
+app.use('/reports', reportRoutes); // Mount it
 app.use('/admin/generate-report', generateReportRoutes);
 app.use('/admin/prompts', promptRoutes);
 app.use('/admin/brands', adminBrandsRouter);

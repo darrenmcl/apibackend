@@ -3,6 +3,51 @@
 function getChartConfig(chartType = 'ecommerce') {
   switch (chartType) {
 
+case 'realestate':
+  return {
+    type: 'bar',
+    data: {
+      labels: ['2020', '2021', '2022', '2023', '2024', '2025', '2026'],
+      datasets: [{
+        label: 'U.S. Residential Real Estate Investment Volume (USD Billions)',
+        data: [300, 370, 425, 390, 410, 450, 475],
+        backgroundColor: 'rgba(34, 197, 94, 0.5)',
+        borderColor: 'rgba(22, 163, 74, 1)',
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: true },
+        title: {
+          display: true,
+          text: 'Real Estate Investment Volume Trends (2020–2026)',
+          font: { size: 16, weight: 'bold' }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: {
+            display: true,
+            text: 'USD Billions',
+            font: { size: 14 }
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Year',
+            font: { size: 14 }
+          }
+        }
+      }
+    }
+  };
+
+
+
 case 'healthcare':
   return {
     type: 'bar',

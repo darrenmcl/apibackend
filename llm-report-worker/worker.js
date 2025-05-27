@@ -44,12 +44,9 @@ async function runWorker() {
       logger.info('[Worker] Job received:', jobData);
 
       try {
-        // Explicitly convert productId to string
         const productId = String(jobData.productId);
-        logger.debug({ productId }, '[Worker] Fetching product metadata...');
-
         const productMeta = await db.query(
-          `SELECT report_title, report_subtitle, header_image_url, template_file, chart_key
+          `SELECT report_title, report_subtitle, header_image_url, template_file, chart_key, brand
            FROM products
            WHERE id = $1`,
           [productId]
@@ -60,14 +57,18 @@ async function runWorker() {
         }
 
         const meta = productMeta.rows[0];
+        const templateFileName = meta.template_file || 'report-template-enhanced.html';
+
+        logger.info(`[Worker] Using template file: ${templateFileName}`);
 
         const context = {
           product_id: productId,
           report_title: meta.report_title,
           report_subtitle: meta.report_subtitle,
           header_image_url: meta.header_image_url,
-          template_file: meta.template_file,
           chart_key: meta.chart_key || 'ecommerce',
+          template_file: templateFileName,
+          brand: meta.brand || 'Performance Marketing Group',
           product_name: jobData.productName || 'Untitled Report',
           user_name: jobData.userName || 'Valued Client',
           order_id: String(jobData.orderId) || uuidv4(),
@@ -96,14 +97,12 @@ async function runWorker() {
 
         await s3Client.send(uploadCommand);
 
-        // Let's print some debug info to see what's going on
         logger.info({
           targetS3Key: typeof jobData.targetS3Key + ': ' + String(jobData.targetS3Key),
           productId: typeof productId + ': ' + String(productId),
           orderId: typeof jobData.orderId + ': ' + String(jobData.orderId)
         }, '[Worker] Debug params before query');
 
-        // Try a simpler query format first to see if it works
         await db.query(
           `UPDATE order_line_item
            SET metadata = jsonb_build_object('llm_status', 'completed', 's3_key', $1::text)
