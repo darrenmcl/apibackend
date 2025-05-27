@@ -4,7 +4,9 @@ const { getChannel } = require('../../lib/amqp'); // Ensure this is correct
 
 router.post('/', async (req, res) => {
   const { productId, brand } = req.body;
-
+  // --- >>> ADD THIS LINE <<< ---
+  console.log('--- BACKEND /generate-report: Received Body ---', req.body);
+  console.log('--- BACKEND /generate-report: Received Headers ---', req.headers);
   if (!productId || !brand) {
     return res.status(400).json({ message: 'Missing productId or brand' });
   }

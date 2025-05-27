@@ -13,7 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 3012;
 
 // --- Import Routes ---
-const adminRoutes = require('./routes/admin'); // contains /generate-report already
+const adminRoutes = require('./routes/admin');
+const generateReportRoutes = require('./routes/admin/generateReport'); // Ensure this path is correct
 const promptRoutes = require('./routes/admin/prompts');
 const adminBrandsRouter = require('./routes/admin/brands');
 const productMetadataRouter = require('./routes/admin/products');
@@ -73,10 +74,24 @@ app.use(express.urlencoded({ extended: true }));
 
 // --- API Routes ---
 logger.info('Mounting API routes...');
-app.use('/admin', adminRoutes); // <-- this includes /generate-report
+
+// --- Mount MORE SPECIFIC /admin routes BEFORE the general /admin route ---
+app.use('/admin/generate-report', generateReportRoutes);
 app.use('/admin/prompts', promptRoutes);
 app.use('/admin/brands', adminBrandsRouter);
 app.use('/admin/products', productMetadataRouter);
+
+// Mount the general /admin route AFTER specific ones
+app.use('/admin', adminRoutes);
+
+// --- ADD ALIAS ROUTES (including the workaround) ---
+app.use('/generate-report.js', generateReportRoutes);
+logger.info('Added alias route /generate-report.js');
+
+app.use('/generate-report', generateReportRoutes); // <-- ADDED THIS WORKAROUND LINE
+logger.info('Added alias route /generate-report (workaround)');
+
+// Mount other routes
 app.use('/sitemap', sitemapRoutes);
 app.use('/chat', chatRoutes);
 app.use('/contact', contactRoutes);
@@ -88,8 +103,7 @@ app.use('/orders', orderRoutes);
 app.use('/blogposts', blogPosts);
 app.use('/blog-categories', blogCategoryRoutes);
 app.use('/stripe', stripeRoutes);
-// In your main backend app file (app.js or server.js)
-app.use('/admin/generate-report', require('./routes/admin/generateReport'));
+
 logger.info('Blog Category routes mounted at /blog-categories');
 logger.info('Stripe routes mounted under /stripe');
 
