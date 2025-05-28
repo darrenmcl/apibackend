@@ -205,11 +205,30 @@
 
 <!-- START: bonus_resources -->
 <section>
-  <div class="section-title-container">
-    <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227900260-Bonus-Resources.svg" />
-    <h2 class="section-title">Bonus Resources</h2>
-  </div>
-  {{ bonus_resources }}
+let bonusHTML = '';
+
+if (bonuses.length) {
+  bonusHTML = '<ul style="list-style: none; padding: 0;">';
+
+  for (const bonus of bonuses) {
+    bonusHTML += `
+      <li style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #ffffff;">
+        <strong style="font-size: 1.1rem; color: #111827;">${sanitizeHtml(bonus.title)}</strong><br />
+        <div style="margin: 0.5rem 0; color: #4b5563;">${sanitizeHtml(bonus.description)}</div>
+        <a href="${bonus.access_link}" style="color: #2563eb; font-weight: 500;" target="_blank">
+          Access Bonus
+        </a>
+      </li>
+    `;
+  }
+
+  bonusHTML += '</ul>';
+} else {
+  bonusHTML = '<p>No bonus resources available at this time.</p>';
+}
+
+html = html.replace(/{{\s*bonus_resources\s*}}/g, bonusHTML);
+
 </section>
 <!-- END: bonus_resources -->
 
