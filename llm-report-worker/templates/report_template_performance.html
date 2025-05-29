@@ -1,240 +1,206 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>{{ report_title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background: #ffffff;
-        color: #1f2937;
-        line-height: 1.6;
-        font-size: 18px;
-        margin: 0;
-      }
+<head>
+  <meta charset="UTF-8" />
+  <title>{{ report_title }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #ffffff;
+      color: #1f2937;
+      line-height: 1.6;
+      font-size: 18px;
+      margin: 0;
+    }
 
-      .page-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 20px;
-      }
+    .page-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
 
-      .header-container {
-        position: relative;
-        height: 340px;
-        overflow: hidden;
-        border-radius: 0.5rem;
-        margin-bottom: 3rem;
-      }
+    .header-container {
+      position: relative;
+      height: 340px;
+      overflow: hidden;
+      border-radius: 0.5rem;
+      margin-bottom: 3rem;
+    }
 
-      .header-image {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        filter: brightness(0.85);
-        z-index: 1;
-      }
+    .header-image {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: brightness(0.85);
+      z-index: 1;
+    }
 
-      .header-overlay {
-        position: relative;
-        z-index: 2;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        padding: 1rem;
-        text-align: center;
-        background: rgba(0, 0, 0, 0.4);
-      }
+    .header-overlay {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100%;
+      padding: 1rem;
+      text-align: center;
+      background: rgba(0, 0, 0, 0.4);
+    }
 
-      .header-title {
-        font-size: 3rem;
-        font-weight: 800;
-        color: white;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
-        margin-bottom: 1rem;
-        line-height: 1.2;
-      }
+    .header-title {
+      font-size: 3rem;
+      font-weight: 800;
+      color: white;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+      margin-bottom: 1rem;
+    }
 
-      .header-subtitle {
-        font-size: 1.5rem;
-        font-weight: 400;
-        color: white;
-        opacity: 0.9;
-        max-width: 700px;
-      }
+    .header-subtitle {
+      font-size: 1.5rem;
+      font-weight: 400;
+      color: white;
+      opacity: 0.9;
+      max-width: 700px;
+    }
 
-      section {
-        margin-bottom: 4rem;
-        background: #ffffff;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        padding: 2rem;
-      }
+    section {
+      margin-bottom: 4rem;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+    }
 
-      section:nth-child(even) {
-        background: #f9fafb;
-      }
+    section:nth-child(even) {
+      background: #f9fafb;
+    }
 
-      .section-title-container {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.75rem;
-        border-bottom: 2px solid #dbeafe;
-      }
+    .section-title-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 2px solid #dbeafe;
+    }
 
-      .section-icon {
-        width: 40px;
-        height: 40px;
-        object-fit: contain;
-        flex-shrink: 0;
-      }
+    .section-icon {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
 
-      .section-title {
-        font-size: 2rem;
-        font-weight: 700;
-        color: #1d4ed8;
-      }
+    .section-title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #1d4ed8;
+    }
 
-      p {
-        margin-bottom: 1.25rem;
-      }
+    p {
+      margin-bottom: 1.25rem;
+    }
 
-      ul, ol {
-        margin-bottom: 1.5rem;
-        padding-left: 1.5rem;
-      }
+    ul, ol {
+      margin-bottom: 1.5rem;
+      padding-left: 1.5rem;
+    }
 
-      li {
-        margin-bottom: 0.75rem;
-      }
+    li {
+      margin-bottom: 0.75rem;
+    }
 
-      .chart-container {
-        margin-top: 2rem;
-        text-align: center;
-      }
+    .chart-container {
+      margin-top: 2rem;
+      text-align: center;
+    }
 
-      .footer {
-        text-align: center;
-        padding: 2rem 0;
-        color: #6b7280;
-        font-size: 0.9rem;
-        border-top: 1px solid #e5e7eb;
-        margin-top: 3rem;
-      }
-    </style>
-  </head>
-  <body>
-    <div class="page-container">
-      <div class="header-container">
-        <img class="header-image" src="{{ header_image_url }}" alt="Report Banner" />
-        <div class="header-overlay">
-          <h1 class="header-title">{{ report_title }}</h1>
-          <p class="header-subtitle">{{ report_subtitle }}</p>
-        </div>
+    .footer {
+      text-align: center;
+      padding: 2rem 0;
+      color: #6b7280;
+      font-size: 0.9rem;
+      border-top: 1px solid #e5e7eb;
+      margin-top: 3rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="page-container">
+    <div class="header-container">
+      <img class="header-image" src="{{ header_image_url }}" alt="Report Banner" />
+      <div class="header-overlay">
+        <h1 class="header-title">{{ report_title }}</h1>
+        <p class="header-subtitle">{{ report_subtitle }}</p>
       </div>
-
-      <!-- START: executive_summary -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
-          <h2 class="section-title">Executive Summary</h2>
-        </div>
-        {{ executive_summary }}
-      </section>
-      <!-- END: executive_summary -->
-
-      <!-- START: market_trends -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" />
-          <h2 class="section-title">Market Trends</h2>
-        </div>
-        {{ market_trends }}
-        <div class="chart-container">
-          {{ chart_url }}
-        </div>
-      </section>
-      <!-- END: market_trends -->
-
-      <!-- START: regional_differences -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" />
-          <h2 class="section-title">Regional Differences</h2>
-        </div>
-        {{ regional_differences }}
-      </section>
-      <!-- END: regional_differences -->
-
-      <!-- START: pain_points -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" />
-          <h2 class="section-title">Customer Pain Points</h2>
-        </div>
-        {{ pain_points }}
-      </section>
-      <!-- END: pain_points -->
-
-      <!-- START: marketing_strategies -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" />
-          <h2 class="section-title">Marketing Strategies</h2>
-        </div>
-        {{ marketing_strategies }}
-      </section>
-      <!-- END: marketing_strategies -->
-
-      <!-- START: business_opportunities -->
-      <section>
-        <div class="section-title-container">
-          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" />
-          <h2 class="section-title">Business Opportunities</h2>
-        </div>
-        {{ business_opportunities }}
-      </section>
-      <!-- END: business_opportunities -->
-
-<!-- START: bonus_resources -->
-<section>
-let bonusHTML = '';
-
-if (bonuses.length) {
-  bonusHTML = '<ul style="list-style: none; padding: 0;">';
-
-  for (const bonus of bonuses) {
-    bonusHTML += `
-      <li style="margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 8px; background: #ffffff;">
-        <strong style="font-size: 1.1rem; color: #111827;">${sanitizeHtml(bonus.title)}</strong><br />
-        <div style="margin: 0.5rem 0; color: #4b5563;">${sanitizeHtml(bonus.description)}</div>
-        <a href="${bonus.access_link}" style="color: #2563eb; font-weight: 500;" target="_blank">
-          Access Bonus
-        </a>
-      </li>
-    `;
-  }
-
-  bonusHTML += '</ul>';
-} else {
-  bonusHTML = '<p>No bonus resources available at this time.</p>';
-}
-
-html = html.replace(/{{\s*bonus_resources\s*}}/g, bonusHTML);
-
-</section>
-<!-- END: bonus_resources -->
-
-      <footer class="footer">
-        Performance Marketing Group | performancecorporate.com
-      </footer>
     </div>
-  </body>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
+        <h2 class="section-title">Executive Summary</h2>
+      </div>
+      {{ executive_summary }}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" />
+        <h2 class="section-title">Market Trends</h2>
+      </div>
+      {{ market_trends }}
+      <div class="chart-container">
+        <img src="{{ chart_url }}" alt="Market Trend Chart" style="max-width: 100%; border-radius: 8px;" />
+      </div>
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" />
+        <h2 class="section-title">Regional Differences</h2>
+      </div>
+      {{ regional_differences }}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" />
+        <h2 class="section-title">Customer Pain Points</h2>
+      </div>
+      {{ pain_points }}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" />
+        <h2 class="section-title">Marketing Strategies</h2>
+      </div>
+      {{ marketing_strategies }}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" />
+        <h2 class="section-title">Business Opportunities</h2>
+      </div>
+      {{ business_opportunities }}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428156831-Bonus-Resources-Icon.svg" />
+        <h2 class="section-title">Bonus Resources</h2>
+      </div>
+      {{ bonus_resources }}
+    </section>
+
+    <footer class="footer">
+      Performance Marketing Group | performancecorporate.com
+    </footer>
+  </div>
+</body>
 </html>

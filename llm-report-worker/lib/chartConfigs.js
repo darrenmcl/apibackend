@@ -3,6 +3,76 @@
 function getChartConfig(chartType = 'ecommerce') {
   switch (chartType) {
 
+case 'precious_metals':
+  return {
+    type: 'line',
+    data: {
+      labels: ['2018', '2019', '2020', '2021', '2022', '2023', '2024'],
+      datasets: [
+        {
+          label: 'Gold Price (USD/oz)',
+          data: [1300, 1400, 1750, 1800, 1850, 1950, 2050],
+          borderColor: 'rgba(255, 215, 0, 1)', // Gold
+          backgroundColor: 'rgba(255, 215, 0, 0.2)',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3,
+          pointRadius: 4
+        },
+        {
+          label: 'US Inflation Rate (%)',
+          data: [2.1, 1.8, 1.2, 2.3, 6.8, 6.5, 4.2],
+          borderColor: 'rgba(37, 99, 235, 1)', // Blue
+          backgroundColor: 'rgba(37, 99, 235, 0.2)',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.3,
+          pointRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: {
+          display: true,
+          text: 'Gold vs. US Inflation Rate (2018–2024)',
+          font: { size: 16, weight: 'bold' },
+          color: '#1f2937'
+        },
+        legend: {
+          position: 'top',
+          labels: {
+            font: { size: 13, weight: '600' },
+            usePointStyle: true,
+            pointStyle: 'circle'
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: false,
+          title: {
+            display: true,
+            text: 'Value',
+            font: { size: 14, weight: 'bold' },
+            color: '#1f2937'
+          }
+        },
+        x: {
+          title: {
+            display: true,
+            text: 'Year',
+            font: { size: 14 },
+            color: '#1f2937'
+          }
+        }
+      }
+    }
+  };
+
+
+
 case 'realestate':
   return {
     type: 'bar',
