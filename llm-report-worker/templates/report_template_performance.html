@@ -75,7 +75,7 @@
       padding: 2rem;
     }
 
-    section:nth-child(even) {
+    section:nth-child(even) { /* This will alternate styling for direct children of .page-container */
       background: #f9fafb;
     }
 
@@ -144,7 +144,15 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
         <h2 class="section-title">Executive Summary</h2>
       </div>
-      {{ executive_summary }}
+      {{{ executive_summary }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748590028985-Market-Outlook-Icon.svg" />
+        <h2 class="section-title">Market Outlook</h2>
+      </div>
+      {{{ market_outlook }}}
     </section>
 
     <section>
@@ -152,7 +160,7 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" />
         <h2 class="section-title">Market Trends</h2>
       </div>
-      {{ market_trends }}
+      {{{ market_trends }}}
       <div class="chart-container">
         <img src="{{ chart_url }}" alt="Market Trend Chart" style="max-width: 100%; border-radius: 8px;" />
       </div>
@@ -160,10 +168,34 @@
 
     <section>
       <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748590173024-Metal-Comparison.svg" />
+        <h2 class="section-title">Metal Comparison</h2>
+      </div>
+      {{{ metal_comparison }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591094582-Investing-Opportunities.svg" />
+        <h2 class="section-title">Investing Opportunities</h2>
+      </div>
+      {{{ investing_strategies }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591435933-Risk-Rewards.svg" />
+        <h2 class="section-title">Risk and Rewards</h2>
+      </div>
+      {{{ risks_and_rewards }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" />
         <h2 class="section-title">Regional Differences</h2>
       </div>
-      {{ regional_differences }}
+      {{{ regional_differences }}}
     </section>
 
     <section>
@@ -171,7 +203,7 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" />
         <h2 class="section-title">Customer Pain Points</h2>
       </div>
-      {{ pain_points }}
+      {{{ pain_points }}}
     </section>
 
     <section>
@@ -179,7 +211,7 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" />
         <h2 class="section-title">Marketing Strategies</h2>
       </div>
-      {{ marketing_strategies }}
+      {{{ marketing_strategies }}}
     </section>
 
     <section>
@@ -187,7 +219,15 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" />
         <h2 class="section-title">Business Opportunities</h2>
       </div>
-      {{ business_opportunities }}
+      {{{ business_opportunities }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591545004-FAQ.svg" />
+        <h2 class="section-title">FAQ</h2>
+      </div>
+      {{{ faq }}}
     </section>
 
     <section>
@@ -195,7 +235,15 @@
         <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428156831-Bonus-Resources-Icon.svg" />
         <h2 class="section-title">Bonus Resources</h2>
       </div>
-      {{ bonus_resources }}
+      {{{ bonus_tools }}}
+    </section>
+
+    <section>
+      <div class="section-title-container">
+        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591696532-Report-Summary.svg" />
+        <h2 class="section-title">Report Summary</h2>
+      </div>
+      {{{ report_summary }}}
     </section>
 
     <footer class="footer">
