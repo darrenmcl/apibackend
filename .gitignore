@@ -24,3 +24,21 @@ dist/
 
 # Temporary files
 tmp/
+
+# Environment variables
+.env
+.env.*
+*.env
+
+# Old/backup files
+*.old
+*.backup
+*.backup-*
+
+# Specific to your case if they were accidental names
+# .env.backup-1748538063 # Probably covered by *.backup-*
+# .env.backup-real       # Probably covered by *.backup
+
+# AWS credentials / sensitive config (if you ever use local files for them)
+aws_credentials.txt
+.aws/credentials
