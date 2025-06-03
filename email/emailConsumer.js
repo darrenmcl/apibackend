@@ -5,9 +5,9 @@ const db = require('./config/db'); // Your PG pool/wrapper
 
 // AWS SES config
 const ses = new AWS.SES({
-  accessKeyId: process.env.EMAIL_AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.EMAIL_AWS_SECRET_ACCESS_KEY,
-  region: process.env.EMAIL_AWS_REGION || 'us-east-1',
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION || 'us-west-2',
 });
 
 // Send email via SES
@@ -40,17 +40,19 @@ async function logEmail({ to, subject, status, error = null }) {
 async function startConsumer() {
   try {
     logger.info('📨 Starting email consumer service');
+    
+    // Add environment variable checks
+    if (!process.env.AWS_ACCESS_KEY_ID) {
+      throw new Error("Missing AWS_ACCESS_KEY_ID");
+    }
+    if (!process.env.ALERT_FROM_EMAIL) {
+      throw new Error("Missing ALERT_FROM_EMAIL");
+    }
 
-    const connection = await amqp.connect({
-      hostname: process.env.RABBITMQ_HOST || 'rabbitmq',
-      port: parseInt(process.env.RABBITMQ_PORT || '5672'),
-      username: process.env.RABBITMQ_USER || 'admin',
-      password: process.env.RABBITMQ_PASS || 'PCPLm4hnigq#2025',
-    });
-
+    const connection = await amqp.connect(process.env.AMQP_URL || 'amqp://admin:PCPLm4hnigq%232025@rabbitmq:5672');
     const channel = await connection.createChannel();
     const queue = process.env.EMAIL_QUEUE || 'email_notifications';
-
+    
     await channel.assertQueue(queue, { durable: true });
     logger.info(`📡 Listening on queue: ${queue}`);
 
@@ -67,10 +69,14 @@ async function startConsumer() {
         }
 
         const { to, subject, html } = parsed;
-
-        if (!subject || !html) {
-          logger.warn('⚠️ Missing required fields in message:', { subject, html });
-          await logEmail({ to: to || '(unknown)', subject: subject || '(none)', status: 'skipped', error: 'Missing subject or HTML' });
+        if (!to || !subject || !html) {
+          logger.warn('⚠️ Missing required fields in message:', { to, subject, html });
+          await logEmail({ 
+            to: to || '(unknown)', 
+            subject: subject || '(none)', 
+            status: 'skipped', 
+            error: 'Missing required fields (to, subject, or html)' 
+          });
           channel.ack(msg);
           return;
         }
@@ -88,37 +94,21 @@ async function startConsumer() {
         }
       }
     });
+
+    // Handle connection errors
+    connection.on('error', (err) => {
+      logger.error('💥 RabbitMQ connection error:', err);
+    });
+
+    connection.on('close', () => {
+      logger.warn('📡 RabbitMQ connection closed');
+    });
+
   } catch (err) {
+    console.error("Fatal error during startConsumer:", err);
     logger.error('💥 Consumer startup error:', err.stack || err.message || err);
     process.exit(1);
   }
 }
-
-
-async function startConsumer() {
-  try {
-    logger.info('📨 Starting email consumer service');
-
-    // Add a quick env check
-    if (!process.env.RABBITMQ_HOST) {
-      console.error("Missing RABBITMQ_HOST");
-      throw new Error("Missing RABBITMQ_HOST");
-    }
-
-    const connection = await amqp.connect({
-      hostname: process.env.RABBITMQ_HOST,
-      port: parseInt(process.env.RABBITMQ_PORT || '5672'),
-      username: process.env.RABBITMQ_USER,
-      password: process.env.RABBITMQ_PASS,
-    });
-
-    ...
-  } catch (err) {
-    console.error("Fatal error during startConsumer:", err); // NEW
-    logger.error('💥 Consumer startup error:', err);         // ORIGINAL
-    process.exit(1);
-  }
-}
-
 
 startConsumer();

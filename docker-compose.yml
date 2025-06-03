@@ -95,6 +95,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${EMAIL_AWS_SECRET_ACCESS_KEY}
       ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL}
       ALERT_TO_EMAIL: ${ALERT_TO_EMAIL}
+      # OpenAI API Key
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
       - ./chat-worker:/usr/src/app
