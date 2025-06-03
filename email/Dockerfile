@@ -1,17 +1,16 @@
 FROM node:18
 WORKDIR /usr/src/app
 
-# Use root project dependencies (not just email)
+# Install deps from root
 COPY ./package*.json ./
-RUN npm install --include=dev
+RUN npm install
 
-# Create needed directories
-RUN mkdir -p middlewares lib logs
+# Copy shared code
+COPY ./lib ./lib
+COPY ./middlewares ./middlewares
 
-# Copy app files
-COPY ./email/ ./
-COPY ./middlewares/ ./middlewares/
-COPY ./lib/ ./lib/
+# Copy the consumer code
+COPY ./email ./email
 
-# Start the consumer
+WORKDIR /usr/src/app/email
 CMD ["node", "emailConsumer.js"]

@@ -94,4 +94,31 @@ async function startConsumer() {
   }
 }
 
+
+async function startConsumer() {
+  try {
+    logger.info('📨 Starting email consumer service');
+
+    // Add a quick env check
+    if (!process.env.RABBITMQ_HOST) {
+      console.error("Missing RABBITMQ_HOST");
+      throw new Error("Missing RABBITMQ_HOST");
+    }
+
+    const connection = await amqp.connect({
+      hostname: process.env.RABBITMQ_HOST,
+      port: parseInt(process.env.RABBITMQ_PORT || '5672'),
+      username: process.env.RABBITMQ_USER,
+      password: process.env.RABBITMQ_PASS,
+    });
+
+    ...
+  } catch (err) {
+    console.error("Fatal error during startConsumer:", err); // NEW
+    logger.error('💥 Consumer startup error:', err);         // ORIGINAL
+    process.exit(1);
+  }
+}
+
+
 startConsumer();

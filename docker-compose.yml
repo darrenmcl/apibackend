@@ -57,10 +57,10 @@ services:
       DB_NAME: ${POSTGRES_DB:-postgres}
       # RabbitMQ Connection URL (ensure your backend-api script uses AMQP_URL)
       AMQP_URL: ${AMQP_URL:-amqp://admin:PCPLm4hnigq%232025@rabbitmq:5672} # Note %23 for #
-      # If backend-api needs direct AWS access for services other than SES alerts:
-      # AWS_REGION: ${AWS_REGION}
-      # AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      # AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # General AWS access (using primary AWS credentials)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY} # If backend also needs this
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
@@ -74,7 +74,7 @@ services:
     restart: unless-stopped
 
   # --- Chat Worker ---
-  # (Assumes this worker might send email alerts via SES and uses AMQP_URL)
+  # (Uses email-specific AWS credentials for SES and uses AMQP_URL)
   chat-worker:
     build:
       context: ./chat-worker
@@ -89,10 +89,10 @@ services:
       DB_NAME: ${POSTGRES_DB:-postgres}
       # RabbitMQ Connection URL (ensure your chat-worker script uses AMQP_URL)
       AMQP_URL: ${AMQP_URL:-amqp://admin:PCPLm4hnigq%232025@rabbitmq:5672}
-      # AWS and Email specific variables
-      AWS_REGION: ${AWS_REGION}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # AWS and Email specific variables (using email-specific credentials)
+      AWS_REGION: ${EMAIL_AWS_REGION:-us-west-2}
+      AWS_ACCESS_KEY_ID: ${EMAIL_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${EMAIL_AWS_SECRET_ACCESS_KEY}
       ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL}
       ALERT_TO_EMAIL: ${ALERT_TO_EMAIL}
       NODE_ENV: ${NODE_ENV:-development}
@@ -107,7 +107,7 @@ services:
     restart: unless-stopped
 
   # --- Email Consumer ---
-  # (Assumes this worker is for sending SES emails and uses AMQP_URL)
+  # (Uses email-specific AWS credentials for SES and uses AMQP_URL)
   email-consumer:
     build:
       context: ./email # Assuming code is in ./email directory
@@ -121,10 +121,10 @@ services:
       # DB_NAME: ${POSTGRES_DB:-postgres}
       # RabbitMQ Connection URL (ensure your email-consumer script uses AMQP_URL)
       AMQP_URL: ${AMQP_URL:-amqp://admin:PCPLm4hnigq%232025@rabbitmq:5672}
-      # AWS and Email specific variables
-      AWS_REGION: ${AWS_REGION}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      # AWS and Email specific variables (using email-specific credentials)
+      AWS_REGION: ${EMAIL_AWS_REGION:-us-west-2}
+      AWS_ACCESS_KEY_ID: ${EMAIL_AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${EMAIL_AWS_SECRET_ACCESS_KEY}
       ALERT_FROM_EMAIL: ${ALERT_FROM_EMAIL}
       ALERT_TO_EMAIL: ${ALERT_TO_EMAIL}
       NODE_ENV: ${NODE_ENV:-development}
@@ -157,8 +157,8 @@ services:
       RABBITMQ_PORT: ${RABBITMQ_SERVICE_PORT:-5672} # Using RABBITMQ_SERVICE_PORT from .env
       RABBITMQ_USER: ${RABBITMQ_USER:-admin}
       RABBITMQ_PASS: ${RABBITMQ_PASS_RAW:-PCPLm4hnigq#2025} # Uses raw password
-      # AWS Credentials & S3 Configuration
-      AWS_REGION: ${AWS_REGION}
+      # AWS Credentials & S3 Configuration (using general AWS credentials)
+      AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
