@@ -3,29 +3,22 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const OpenAI = require('openai');
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-});
-
 // Separate OpenAI client specifically for embeddings
 const embeddingClient = new OpenAI({
   apiKey: process.env.OPENAI_EMBEDDING_API_KEY || process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_EMBEDDING_BASE_URL || 'https://api.openai.com/v1',
 });
 
-// Smart configuration: detect if running in Docker or on host
-const isDocker = process.env.NODE_ENV === 'docker' || process.env.DOCKER_ENV === 'true';
+// Force localhost configuration for running from host, but read from .env
 const dbConfig = {
-  host: isDocker ? 'pgvector-db' : 'localhost',
-  port: isDocker ? 5432 : 5433, // Internal port vs exposed port
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'postgres',
+  host: 'localhost',
+  port: 5433,
+  user: process.env.POSTGRES_USER || 'postgres',
+  password: process.env.POSTGRES_PASSWORD || 'postgres',
+  database: process.env.POSTGRES_DB || 'postgres',
 };
 
 console.log(`📊 Connecting to database: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
-console.log(`🤖 Using chat API: ${process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'}`);
 console.log(`🔗 Using embedding API: ${process.env.OPENAI_EMBEDDING_BASE_URL || 'https://api.openai.com/v1'}`);
 
 const pool = new Pool(dbConfig);
@@ -50,54 +43,55 @@ async function getEmbedding(text) {
   }
 }
 
-async function getContext(userMessage) {
-  try {
-    const userEmbedding = await getEmbedding(userMessage);
-    const result = await pool.query(
-      "SELECT content FROM rag_documents ORDER BY embedding <-> $1 LIMIT 10",
-      [userEmbedding]
-    );
-
-    const context = result.rows.map(r => r.content).join('\n\n---\n\n');
-    console.log('[DEBUG] Retrieved Context:\n', context); // ✅ Debug context output
-    return context;
-  } catch (error) {
-    console.error('[Worker ERROR] Failed to get context:', error.message);
-    return 'No context available due to error.';
-  }
-}
-
-
 async function runEmbedding() {
   try {
     // Test database connection first
     const testResult = await pool.query('SELECT NOW() as current_time');
     console.log('✅ Database connection successful:', testResult.rows[0].current_time);
   } catch (err) {
-    console.error('❌ Database connection failed:', err.message);
-    console.error('💡 Tip: Make sure PostgreSQL is running and accessible');
+    console.error('❌ Cannot connect to PostgreSQL:', err.message);
+    console.error('💡 Make sure PostgreSQL container is running: docker-compose up -d pgvector-db');
     throw err;
   }
 
-  const { rows } = await pool.query(
-    //`SELECT id, content FROM rag_documents WHERE embedding IS NULL ORDER BY id`
-  `SELECT id, content FROM rag_documents WHERE id = 5`
- );
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const idArg = args.find(arg => arg.startsWith('--id='));
+  const specificId = idArg ? parseInt(idArg.split('=')[1]) : null;
+
+  let query = `SELECT id, content FROM rag_documents WHERE embedding IS NULL`;
+  let params = [];
+  
+  if (specificId) {
+    query += ` AND id = $1`;
+    params = [specificId];
+    console.log(`🎯 Processing specific document ID: ${specificId}`);
+  }
+  
+  query += ` ORDER BY id`;
+
+  const { rows } = await pool.query(query, params);
   
   if (rows.length === 0) {
-    console.log('✅ No unembedded documents found.');
+    if (specificId) {
+      console.log(`❌ No document found with ID ${specificId} or it already has an embedding.`);
+    } else {
+      console.log('✅ No unembedded documents found.');
+    }
     return;
   }
   
-  console.log(`🧠 Found ${rows.length} documents needing embeddings.`);
+  console.log(`🧠 Found ${rows.length} document(s) needing embeddings.`);
   
   for (const row of rows) {
     try {
       console.log(`🔄 Processing doc #${row.id}...`);
       const embedding = await getEmbedding(row.content);
+      
+      // Format as PostgreSQL vector - just pass the array directly
       await pool.query(
         `UPDATE rag_documents SET embedding = $1 WHERE id = $2`,
-        [embedding, row.id]
+        [`[${embedding.join(',')}]`, row.id]
       );
       console.log(`✅ Embedded doc #${row.id}`);
     } catch (err) {
