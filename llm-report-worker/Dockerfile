@@ -1,12 +1,10 @@
 # llm-report-worker/Dockerfile
-
-# Base image with Node.js 18
-FROM node:18-slim
+FROM node:18
 
 # Set working directory
 WORKDIR /usr/src/app
 
-# Install required system libraries for Puppeteer + Chromium ITSELF
+# Install required system libraries for Puppeteer + Chromium ONLY
 RUN apt-get update && apt-get install -y \
     chromium \
     libnss3 \
@@ -38,9 +36,6 @@ COPY package*.json ./
 # Install dependencies
 RUN npm install
 
-# Install Chart.js and related plugins
-RUN npm install chart.js@3.9.1 chartjs-node-canvas@4.1.6 chartjs-plugin-datalabels@2.2.0 chartjs-plugin-annotation@2.1.0
-
 # Copy the rest of the worker code
 COPY . .
 
@@ -49,6 +44,7 @@ RUN mkdir -p /tmp/pdf-output && chmod 777 /tmp/pdf-output
 
 # Set environment variable to tell Puppeteer to skip downloading its own Chrome/Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+
 # Tell Puppeteer where to find the system-installed Chromium.
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
