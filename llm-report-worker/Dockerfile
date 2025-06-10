@@ -33,8 +33,8 @@ RUN apt-get update && apt-get install -y \
 # Copy package files and install dependencies
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Clean install - use regular npm install since we don't have package-lock.json
+RUN npm install --omit=dev
 
 # Copy the rest of the worker code
 COPY . .

@@ -1,270 +1,231 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>{{ report_title }}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <style>
-    body {
-      font-family: 'Arial', 'Helvetica Neue', Helvetica, sans-serif; /* Generic font stack */
-      background: #ffffff;
-      color: #333333; /* Dark grey for text */
-      line-height: 1.6;
-      font-size: 16px; /* Base font size for PDF readability */
-      margin: 0;
-      -webkit-print-color-adjust: exact; /* Important for background colors in PDF */
-    }
+  <head>
+    <meta charset="UTF-8" />
+    <title>{{ report_title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #ffffff;
+        color: #1f2937;
+        line-height: 1.6;
+        font-size: 18px;
+        margin: 0;
+      }
 
-    .page-container {
-      max-width: 1200px; /* Max width for HTML view, PDF renderer will use page size */
-      margin: 0 auto;
-      padding: 20px; /* Padding for HTML view */
-    }
+      .page-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+      }
 
-    .header-container {
-      position: relative;
-      height: 300px; /* Adjust as needed */
-      overflow: hidden;
-      border-radius: 0.3rem;
-      margin-bottom: 2.5rem;
-      background-color: #f0f0f0; /* Fallback background if image fails */
-    }
+      .header-container {
+        position: relative;
+        height: 340px;
+        overflow: hidden;
+        border-radius: 0.5rem;
+        margin-bottom: 3rem;
+      }
 
-    .header-image {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      filter: brightness(0.9); /* Adjust brightness as needed */
-      z-index: 1;
-    }
+      .header-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        filter: brightness(0.85);
+        z-index: 1;
+      }
 
-    .header-overlay {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      height: 100%;
-      padding: 1rem;
-      text-align: center;
-      background: rgba(0, 0, 0, 0.35); /* Darker overlay for better text contrast */
-    }
+      .header-overlay {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        padding: 1rem;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.4);
+      }
 
-    .header-title {
-      font-size: 2.8rem; /* Slightly adjusted */
-      font-weight: 700; /* Bold */
-      color: white;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-      margin-bottom: 0.75rem;
-    }
+      .header-title {
+        font-size: 3rem;
+        font-weight: 800;
+        color: white;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+        margin-bottom: 1rem;
+        line-height: 1.2;
+      }
 
-    .header-subtitle {
-      font-size: 1.3rem; /* Slightly adjusted */
-      font-weight: 400;
-      color: white;
-      opacity: 0.95;
-      max-width: 750px;
-    }
+      .header-subtitle {
+        font-size: 1.5rem;
+        font-weight: 400;
+        color: white;
+        opacity: 0.9;
+        max-width: 700px;
+      }
 
-    section {
-      margin-bottom: 3rem; /* Space between sections */
-      background: #ffffff;
-      border-radius: 8px; /* Softer corners */
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05); /* Softer shadow */
-      padding: 1.5rem; /* Standard padding */
-      page-break-inside: avoid; /* Attempt to prevent sections from breaking across pages */
-    }
+      section {
+        margin-bottom: 4rem;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+      }
 
-    section:nth-child(even) {
-      background: #f8f9fa; /* Light alternating background */
-    }
+      section:nth-child(even) {
+        background: #f9fafb;
+      }
 
-    .section-title-container {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem; /* Space between icon and title */
-      margin-bottom: 1.25rem;
-      padding-bottom: 0.6rem;
-      /* BRANDING: Replace #007bff with your brand's primary color */
-      border-bottom: 2px solid #007bff; /* Example primary color (Bootstrap Blue) */
-    }
+      .section-title-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem;
+        border-bottom: 2px solid #dbeafe;
+      }
 
-    .section-icon {
-      width: 32px; /* Slightly smaller icons */
-      height: 32px;
-      object-fit: contain;
-      flex-shrink: 0;
-    }
+      .section-icon {
+        width: 40px;
+        height: 40px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
 
-    .section-title {
-      font-size: 1.8rem; /* Slightly smaller section titles */
-      font-weight: 600;
-      /* BRANDING: Replace #007bff with your brand's primary color */
-      color: #007bff; /* Example primary color */
-    }
+      .section-title {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #1d4ed8;
+      }
 
-    p {
-      margin-bottom: 1rem;
-      font-size: 1rem; /* PDF standard paragraph size */
-    }
+      p {
+        margin-bottom: 1.25rem;
+      }
 
-    ul, ol {
-      margin-bottom: 1rem;
-      padding-left: 1.25rem; /* Standard indent */
-    }
+      ul, ol {
+        margin-bottom: 1.5rem;
+        padding-left: 1.5rem;
+      }
 
-    li {
-      margin-bottom: 0.5rem;
-    }
+      li {
+        margin-bottom: 0.75rem;
+      }
 
-    .chart-container {
-      margin-top: 1.5rem;
-      margin-bottom: 1.5rem; /* Added margin below chart */
-      text-align: center;
-      page-break-inside: avoid;
-    }
+      .chart-container {
+        margin-top: 2rem;
+        text-align: center;
+      }
 
-    /* Styles for content coming from Markdown (h1, h2, h3) */
-    /* These are handled by sanitizeHtml in renderReportToPDF for safety */
-    /* But you can define base styles here that the sanitized HTML will inherit if classes are not stripped */
-    h1 { font-size: 1.6em; margin-bottom: 0.8em; color: #333; }
-    h2 { font-size: 1.4em; margin-bottom: 0.7em; color: #444; }
-    h3 { font-size: 1.2em; margin-bottom: 0.6em; color: #555; }
-
-
-    .html-footer { /* Styles the HTML footer defined at the end of this template body */
-      text-align: center;
-      padding: 1.5rem 0;
-      color: #6c757d; /* Bootstrap secondary text color */
-      font-size: 0.85rem;
-      border-top: 1px solid #dee2e6; /* Bootstrap card/border color */
-      margin-top: 2.5rem;
-    }
-  </style>
-</head>
-<body>
-  <div class="page-container">
-    <div class="header-container">
-      <img class="header-image" src="{{ header_image_url }}" alt="Report Banner" />
-      <div class="header-overlay">
-        <h1 class="header-title">{{ report_title }}</h1>
-        <p class="header-subtitle">{{ report_subtitle }}</p>
+      .footer {
+        text-align: center;
+        padding: 2rem 0;
+        color: #6b7280;
+        font-size: 0.9rem;
+        border-top: 1px solid #e5e7eb;
+        margin-top: 3rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page-container">
+      <div class="header-container">
+        <img class="header-image" src="{{ header_image_url }}" alt="Report Banner" />
+        <div class="header-overlay">
+          <h1 class="header-title">{{ report_title }}</h1>
+          <p class="header-subtitle">{{ report_subtitle }}</p>
+        </div>
       </div>
+
+      <!-- START: executive_summary -->
+      <section id="executive-summary">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
+          <h2 class="section-title">Executive Summary</h2>
+        </div>
+        {{{ executive_summary }}}
+      </section>
+      <!-- END: executive_summary -->
+
+      <!-- START: market_trends -->
+      <section id="market-trends">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" />
+          <h2 class="section-title">Market Trends</h2>
+        </div>
+        {{{ market_trends }}}
+        <div class="chart-container">
+          {{{ chart_image_tag }}}
+        </div>
+      </section>
+      <!-- END: market_trends -->
+
+      <!-- START: investing_strategies -->
+      <section id="investing-strategies">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" />
+          <h2 class="section-title">Investing Opportunities</h2>
+        </div>
+        {{{ investing_strategies }}}
+      </section>
+      <!-- END: investing_strategies -->
+
+      <!-- START: regional_differences -->
+      <section id="regional-differences">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" />
+          <h2 class="section-title">Regional Differences</h2>
+        </div>
+        {{{ regional_differences }}}
+      </section>
+      <!-- END: regional_differences -->
+
+      <!-- START: pain_points -->
+      <section id="pain-points">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" />
+          <h2 class="section-title">Customer Pain Points</h2>
+        </div>
+        {{{ pain_points }}}
+      </section>
+      <!-- END: pain_points -->
+
+      <!-- START: marketing_strategies -->
+      <section id="marketing-strategies">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" />
+          <h2 class="section-title">Marketing Strategies</h2>
+        </div>
+        {{{ marketing_strategies }}}
+      </section>
+      <!-- END: marketing_strategies -->
+
+      <!-- START: business_opportunities -->
+      <section id="business-opportunities">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" />
+          <h2 class="section-title">Business Opportunities</h2>
+        </div>
+        {{{ business_opportunities }}}
+      </section>
+      <!-- END: business_opportunities -->
+
+      <!-- START: bonus_resources -->
+      <section id="bonus-resources">
+        <div class="section-title-container">
+          <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227900260-Bonus-Resources.svg" />
+          <h2 class="section-title">Bonus Resources</h2>
+        </div>
+        {{{ bonus_resources }}}
+      </section>
+      <!-- END: bonus_resources -->
+
+      <footer class="footer">
+        Performance Marketing Group | performancecorporate.com
+      </footer>
     </div>
-
-    <section id="executive-summary">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428226034-Executive-Summary-Icon.svg" alt="Icon"/>
-        <h2 class="section-title">Executive Summary</h2>
-      </div>
-      {{{ executive_summary }}}
-    </section>
-
-    <section id="market-outlook">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748590028985-Market-Outlook-Icon.svg" alt="Icon"/>
-        <h2 class="section-title">Market Outlook</h2>
-      </div>
-      {{{ market_outlook }}}
-    </section>
-
-    <section id="market-trends">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428212861-Market-Trends-Icon.svg" alt="Icon"/>
-        <h2 class="section-title">Market Trends</h2>
-      </div>
-      {{{ market_trends }}}
-      <div class="chart-container">
-        {{{ chart_image_tag }}}
-      </div>
-    </section>
-
-    <section id="metal-comparison">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748590173024-Metal-Comparison.svg" alt="Icon"/>
-        <h2 class="section-title">Metal Comparison</h2>
-      </div>
-      {{{ metal_comparison }}}
-    </section>
-
-    <section id="investing-opportunities">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591094582-Investing-Opportunities.svg" alt="Icon"/>
-        <h2 class="section-title">Investing Opportunities</h2>
-      </div>
-      {{{ investing_strategies }}} {/* Ensure data key matches 'investing_strategies' */}
-    </section>
-
-    <section id="risks-and-rewards">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591435933-Risk-Rewards.svg" alt="Icon"/>
-        <h2 class="section-title">Risk and Rewards</h2>
-      </div>
-      {{{ risks_and_rewards }}}
-    </section>
-
-    <section id="regional-differences">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227938050-Regional-Differences.svg" alt="Icon"/>
-        <h2 class="section-title">Regional Differences</h2>
-      </div>
-      {{{ regional_differences }}}
-    </section>
-
-    <section id="customer-pain-points">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428192092-Customer-Paint-Points.svg" alt="Icon"/>
-        <h2 class="section-title">Customer Pain Points</h2>
-      </div>
-      {{{ pain_points }}}
-    </section>
-
-    <section id="marketing-strategies">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428180583-Marketing-Strategies-Icon.svg" alt="Icon"/>
-        <h2 class="section-title">Marketing Strategies</h2>
-      </div>
-      {{{ marketing_strategies }}}
-    </section>
-
-    <section id="business-opportunities">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1745428168869-Business-Opportunities-Icon.svg" alt="Icon"/>
-        <h2 class="section-title">Business Opportunities</h2>
-      </div>
-      {{{ business_opportunities }}}
-    </section>
-
-    <section id="faq">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591545004-FAQ.svg" alt="Icon"/>
-        <h2 class="section-title">FAQ</h2>
-      </div>
-      {{{ faq }}}
-    </section>
-
-    <section id="bonus-resources">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1747227900260-Bonus-Resources.svg" alt="Icon"/>
-        <h2 class="section-title">Bonus Resources</h2>
-      </div>
-      {{{ bonus_tools }}}
-    </section>
-
-    <section id="report-summary">
-      <div class="section-title-container">
-        <img class="section-icon" src="https://assets.performancecorporate.com/uploads/1748591696532-Report-Summary.svg" alt="Icon"/>
-        <h2 class="section-title">Report Summary</h2>
-      </div>
-      {{{ report_summary }}}
-    </section>
-
-    <footer class="html-footer">
-      {{ brand }} | <a href="{{ brand_url }}" style="color: #007bff; text-decoration: none;">{{ brand_url }}</a>
-    </footer>
-  </div>
-</body>
+  </body>
 </html>

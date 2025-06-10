@@ -1,3 +1,4 @@
+# /var/projects/backend-api/docker-compose.yml
 version: "3.8"
 
 services:
@@ -66,7 +67,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
       - .:/usr/src/app
-      # - /usr/src/app/node_modules  <-- REMOVED THIS LINE
+      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -75,6 +76,7 @@ services:
     restart: unless-stopped
 
   # --- Chat Worker ---
+  # (Uses email-specific AWS credentials for SES and uses AMQP_URL)
   chat-worker:
     build:
       context: ./chat-worker
@@ -102,7 +104,7 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
       - ./chat-worker:/usr/src/app
-      # - /usr/src/app/node_modules  <-- REMOVED THIS LINE
+      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -111,12 +113,18 @@ services:
     restart: unless-stopped
 
   # --- Email Consumer ---
+  # (Uses email-specific AWS credentials for SES and uses AMQP_URL)
   email-consumer:
     build:
       context: ./email # Assuming code is in ./email directory
       dockerfile: Dockerfile
     container_name: email-consumer
     environment:
+      # DB_HOST: ${POSTGRES_HOST_FOR_APPS:-pgvector-db} # Uncomment if it needs DB
+      # DB_PORT: ${POSTGRES_SERVICE_PORT:-5432}
+      # DB_USER: ${POSTGRES_USER:-postgres}
+      # DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # DB_NAME: ${POSTGRES_DB:-postgres}
       # RabbitMQ Connection URL (ensure your email-consumer script uses AMQP_URL)
       AMQP_URL: ${AMQP_URL:-amqp://admin:PCPLm4hnigq%232025@rabbitmq:5672}
       # AWS and Email specific variables (using email-specific credentials)
@@ -127,11 +135,13 @@ services:
       ALERT_TO_EMAIL: ${ALERT_TO_EMAIL}
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
-      - ./email:/usr/src/app
-      # - /usr/src/app/node_modules  <-- REMOVED THIS LINE
+      - ./email:/usr/src/app # Mounts the ./email directory
+      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy
+      # pgvector-db: # Uncomment if it needs DB
+      #   condition: service_healthy
     restart: unless-stopped
     command: node emailConsumer.js # Or your main script name
 
@@ -148,24 +158,28 @@ services:
       DB_USER: ${POSTGRES_USER:-postgres}
       DB_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       DB_NAME: ${POSTGRES_DB:-postgres}
-      # RabbitMQ Settings
+      # RabbitMQ Settings (for its specific worker.js that uses individual params)
       RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
-      RABBITMQ_PORT: ${RABBITMQ_SERVICE_PORT:-5672}
+      RABBITMQ_PORT: ${RABBITMQ_SERVICE_PORT:-5672} # Using RABBITMQ_SERVICE_PORT from .env
       RABBITMQ_USER: ${RABBITMQ_USER:-admin}
-      RABBITMQ_PASS: ${RABBITMQ_PASS_RAW:-PCPLm4hnigq#2025}
-      # AWS Credentials & S3 Configuration
+      RABBITMQ_PASS: ${RABBITMQ_PASS_RAW:-PCPLm4hnigq#2025} # Uses raw password
+      # AWS Credentials & S3 Configuration (using general AWS credentials)
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       S3_BUCKET_NAME: ${S3_BUCKET_NAME}
       # Worker Queue
       WORKER_QUEUE: ${WORKER_QUEUE:-llm_report_jobs}
-      # LLM API Key
+      # LLM API Configuration - UPDATED FOR OPENROUTER
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://openrouter.ai/api/v1}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-3.5-sonnet}
+      OPENROUTER_REFERER: ${OPENROUTER_REFERER:-https://your-app.com}
+      OPENROUTER_TITLE: ${OPENROUTER_TITLE:-LLM Report Worker}
       NODE_ENV: ${NODE_ENV:-development}
     volumes:
       - ./llm-report-worker:/usr/src/app
-      # - /usr/src/app/node_modules  <-- REMOVED THIS LINE
+      - /usr/src/app/node_modules
     depends_on:
       rabbitmq:
         condition: service_healthy

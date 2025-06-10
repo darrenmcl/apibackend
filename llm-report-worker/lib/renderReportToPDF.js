@@ -1,16 +1,9 @@
 require('dotenv').config();
 const puppeteer = require('puppeteer');
-const fs = require('fs'); // <--- FIX: Added the missing 'fs' module import
+const fs = require('fs');
 const path = require('path');
-const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
-const { getChartConfig } = require('./chartConfigs');
 const { marked } = require('marked');
 const sanitizeHtml = require('sanitize-html');
-
-// --- Configuration for Dynamic Chart Generation (Fallback) ---
-const CANVAS_WIDTH = 900;
-const CANVAS_HEIGHT = 450;
-const chartCanvas = new ChartJSNodeCanvas({ width: CANVAS_WIDTH, height: CANVAS_HEIGHT });
 
 // --- Helper Functions ---
 function findChromiumExecutable() {
@@ -51,7 +44,6 @@ async function renderReportToPDF(data = {}) {
   console.log('[renderReportToPDF] Starting PDF generation with data:', {
     report_title: data.report_title,
     template_file: data.template_file,
-    chart_key: data.chart_key,
     uploaded_chart_url: data.uploaded_chart_url,
     brand: data.brand
   });
@@ -63,14 +55,12 @@ async function renderReportToPDF(data = {}) {
       report_subtitle: data.report_subtitle || '',
       header_image_url: data.header_image_url || '',
       template_file: data.template_file || 'default_report_template.html',
-      chart_key: data.chart_key || null,
       uploaded_chart_url: data.uploaded_chart_url || null,
-      brand: data.brand || 'Your Company Name',
-      brand_url: data.brand_url || '#'
+      brand: 'Performance Marketing Group',
+      brand_url: 'https://performancecorporate.com'
     };
 
     const templatePath = path.join(__dirname, `../templates/${mappedData.template_file}`);
-    // This is the line that was causing the error because 'fs' was not defined
     if (!fs.existsSync(templatePath)) {
       console.error(`[renderReportToPDF] Template not found: ${templatePath}`);
       throw new Error(`Template not found: ${templatePath}`);
@@ -78,36 +68,19 @@ async function renderReportToPDF(data = {}) {
     let html = fs.readFileSync(templatePath, 'utf-8');
     console.log(`[renderReportToPDF] Loaded template: ${mappedData.template_file}`);
 
-    // --- Placeholder Replacements ---
-    // (The rest of the function remains the same as the last version I provided)
-    // ...
-    
-    // --- Chart Image Handling (Priority to uploaded_chart_url, fallback to dynamic) ---
+    // --- Chart Image Handling (Only pre-uploaded charts) ---
     let chartDisplayHtml = `<div style="text-align:center; padding:20px; border:1px dashed #ccc; color:#777; font-size:0.9em;">Chart not available.</div>`;
 
     if (mappedData.uploaded_chart_url) {
       console.log(`[renderReportToPDF] Using pre-uploaded chart URL: "${mappedData.uploaded_chart_url}"`);
-      const sanitizedUrl = sanitizeHtml(mappedData.uploaded_chart_url, { allowedTags: [], allowedAttributes: {}, allowedSchemes: [ 'http', 'https', 'data' ]});
-      chartDisplayHtml = `<img src="${sanitizedUrl}" alt="${sanitizeHtml(mappedData.chart_key || 'Market Chart')}" style="display:block; margin:auto; max-width:100%; height:auto;" class="w-full rounded-lg shadow-md" />`;
-    } else if (mappedData.chart_key) {
-      console.log(`[renderReportToPDF] No pre-uploaded chart URL. Attempting to dynamically generate chart with key: "${mappedData.chart_key}"`);
-      try {
-        const chartConfig = getChartConfig(mappedData.chart_key);
-        if (chartConfig) {
-          const chartBuffer = await chartCanvas.renderToBuffer(chartConfig);
-          const base64 = chartBuffer.toString('base64');
-          chartDisplayHtml = `<img src="data:image/png;base64,${base64}" alt="${sanitizeHtml(mappedData.chart_key || 'Market Chart')}" style="display:block; margin:auto; max-width:100%; height:auto;" class="w-full rounded-lg shadow-md" />`;
-          console.log(`[renderReportToPDF] Dynamically generated chart for key: "${mappedData.chart_key}"`);
-        } else {
-          console.warn(`[renderReportToPDF] No chart configuration found for dynamic generation with chart_key: "${mappedData.chart_key}".`);
-          chartDisplayHtml = `<div style="text-align:center; padding:20px; border:1px dashed #ccc; color:#777; font-size:0.9em;">Chart configuration unavailable (key: ${sanitizeHtml(mappedData.chart_key)}).</div>`;
-        }
-      } catch (err) {
-        console.error('[renderReportToPDF] Dynamic chart generation failed:', err.message);
-        chartDisplayHtml = `<div style="text-align:center; padding:20px; border:1px dashed #ccc; color:#777; font-size:0.9em;">Chart generation failed (key: ${sanitizeHtml(mappedData.chart_key)}).</div>`;
-      }
+      const sanitizedUrl = sanitizeHtml(mappedData.uploaded_chart_url, { 
+        allowedTags: [], 
+        allowedAttributes: {}, 
+        allowedSchemes: ['http', 'https', 'data']
+      });
+      chartDisplayHtml = `<img src="${sanitizedUrl}" alt="Market Chart" style="display:block; margin:auto; max-width:100%; height:auto;" class="w-full rounded-lg shadow-md" />`;
     } else {
-      console.warn('[renderReportToPDF] No pre-uploaded chart URL and no chart_key provided. Chart will not be displayed.');
+      console.warn('[renderReportToPDF] No pre-uploaded chart URL provided. Chart will not be displayed.');
     }
     html = html.replace(new RegExp(`{{{\\s*chart_image_tag\\s*}}}`, 'g'), chartDisplayHtml);
 
@@ -119,10 +92,11 @@ async function renderReportToPDF(data = {}) {
       'pain_points', 'marketing_strategies', 'business_opportunities',
       'faq', 'report_summary'
     ];
+    
     for (const sectionKey of allPossibleSections) {
       let contentExists = !!mappedData[sectionKey];
       if (sectionKey === 'market_trends') {
-        const chartExists = !!(mappedData.uploaded_chart_url || mappedData.chart_key);
+        const chartExists = !!mappedData.uploaded_chart_url;
         contentExists = contentExists || chartExists;
       }
       if (!contentExists) {
@@ -132,11 +106,62 @@ async function renderReportToPDF(data = {}) {
         console.log(`[renderReportToPDF] Removed empty section: #${sectionId}`);
       }
     }
+
+    // --- Replace other placeholders ---
+    Object.keys(mappedData).forEach(key => {
+      if (mappedData[key] !== null && mappedData[key] !== undefined) {
+        let content = String(mappedData[key]);
+        
+        // Process markdown content for specific content sections
+        if (key.includes('summary') || key.includes('outlook') || key.includes('trends') || 
+            key.includes('comparison') || key.includes('strategies') || key.includes('risks') || 
+            key.includes('differences') || key.includes('points') || key.includes('opportunities') || 
+            key.includes('faq')) {
+          try {
+            content = marked(content);
+            content = sanitizeHtml(content, {
+              allowedTags: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'blockquote'],
+              allowedAttributes: {
+                'a': ['href', 'target']
+              }
+            });
+          } catch (err) {
+            console.warn(`[renderReportToPDF] Markdown processing failed for ${key}:`, err.message);
+          }
+        }
+        
+        // Replace multiple placeholder formats
+        const patterns = [
+          new RegExp(`{{{\\s*${key}\\s*}}}`, 'g'),      // {{{ key }}}
+          new RegExp(`{{\\s*${key}\\s*}}`, 'g'),        // {{ key }}
+          new RegExp(`{{{{\\s*${key}\\s*}}}}`, 'g'),    // {{{{ key }}}}
+        ];
+        
+        patterns.forEach(pattern => {
+          html = html.replace(pattern, content);
+        });
+      }
+    });
+
+    // Handle brand_url placeholder specifically
+    if (mappedData.brand_url) {
+      html = html.replace(/\{\{\s*brand_url\s*\}\}/g, mappedData.brand_url);
+    }
+
+    // --- Handle bonus section ---
+    if (mappedData.bonus_section) {
+      const bonusHTML = renderBonusSectionFromText(mappedData.bonus_section);
+      html = html.replace(new RegExp(`{{{\\s*bonus_section\\s*}}}`, 'g'), bonusHTML);
+    }
+
+    // --- Clean up any remaining placeholders ---
+    html = html.replace(/{{{[^}]*}}}/g, '');
+    html = html.replace(/{{[^}]*}}/g, '');
+    html = html.replace(/{{{{[^}]*}}}}/g, '');
     
-    // The rest of the file (markdown processing, bonus section, Puppeteer launch, etc.)
-    // should remain the same as the last version I provided.
-    // ...
-    // ...
+    // Clean up comments and malformed placeholders
+    html = html.replace(/{\s*\/\*[^*]*\*\/\s*}/g, '');
+    html = html.replace(/{{{{[^}]*}}}}/g, '');
 
     fs.writeFileSync('./debug-report.html', html, 'utf-8');
     console.log('[renderReportToPDF] Debug HTML file written after cleanup.');
